@@ -6,19 +6,25 @@ Stack: FastAPI + Postgres (backend/), React + Vite (frontend/), Auth über Keycl
 
 ## Entwicklung
 
-```sh
-# Postgres + Keycloak (+ API im Container)
-docker compose up -d db keycloak
+Alles in einem Rutsch (Postgres, Keycloak, API, Frontend mit Hot Reload):
 
-# API lokal (Port 8000)
+```sh
+docker compose up -d
+# UI: http://localhost:5173 → Login michel/michel (Keycloak-Dev-Realm)
+```
+
+Oder API/Frontend nativ für schnellere Iteration (dann ohne Login, User `dev`):
+
+```sh
+docker compose up -d db
+
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload   # Port 8000
 
-# Frontend (Port 5173, proxied /api → 8000)
 cd frontend
 npm install
-npm run dev
+npm run dev                            # Port 5173, proxied /api → 8000
 ```
 
 Tests und Lint:
