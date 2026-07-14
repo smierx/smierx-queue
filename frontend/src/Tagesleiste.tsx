@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { api } from "./api";
 import type { Capacity, Task, TimeBlock } from "./types";
@@ -47,12 +47,15 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
   onTaskClick: (task: Task) => void;
 }) {
   const [form, setForm] = useState<FormDaten | null>(null);
+  // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
+  const [offset, setOffset] = useState(0);
+  const drag = useRef<{ x: number; offset: number; bewegt: boolean } | null>(null);
 
   const jetzt = new Date();
   const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
   const heuteStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
 
-  // Laufende Tasks: Balken von "aktiv gesetzt" bis jetzt. Start vor heute → ab Achsenbeginn.
+  // Laufende Tasks: Balken von "aktiv gesetzt" bis jetzt. Start vor heute → ab Tagesanfang.
   const laufende = aktive
     .filter((t) => t.aktiv_seit !== null)
     .map((t) => ({
@@ -60,37 +63,73 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
       startMin: new Date(t.aktiv_seit!) < heuteStart ? 0 : minuten(t.aktiv_seit!),
     }));
 
-  // Rahmen: feste Zeiten aus dem Arbeitszeit-Modell, im Stunden-Modus 07 bis 16 Uhr.
-  // Blöcke und laufende Tasks außerhalb weiten die Achse, damit nichts unsichtbar bleibt.
-  let achseStart = 7 * 60;
-  let achseEnde = 16 * 60;
+  // Auto-Fenster: feste Zeiten aus dem Arbeitszeit-Modell, im Stunden-Modus 07 bis 16 Uhr.
+  // Blöcke und laufende Tasks außerhalb weiten das Fenster, damit nichts unsichtbar bleibt.
+  let autoStart = 7 * 60;
+  let autoEnde = 16 * 60;
   if (kapazitaet.fenster_von && kapazitaet.fenster_bis) {
     const [vh, vm] = kapazitaet.fenster_von.split(":").map(Number);
     const [bh, bm] = kapazitaet.fenster_bis.split(":").map(Number);
-    achseStart = vh * 60 + vm;
-    achseEnde = bh * 60 + bm;
+    autoStart = vh * 60 + vm;
+    autoEnde = bh * 60 + bm;
   }
   for (const block of kapazitaet.bloecke) {
-    achseStart = Math.min(achseStart, minuten(block.start));
-    achseEnde = Math.max(achseEnde, minuten(block.ende));
+    autoStart = Math.min(autoStart, minuten(block.start));
+    autoEnde = Math.max(autoEnde, minuten(block.ende));
   }
   for (const { startMin } of laufende) {
-    if (startMin > 0) achseStart = Math.min(achseStart, startMin);
-    achseEnde = Math.max(achseEnde, jetztMin);
+    if (startMin > 0) autoStart = Math.min(autoStart, startMin);
+    autoEnde = Math.max(autoEnde, jetztMin);
   }
-  achseStart = Math.floor(achseStart / 60) * 60;
-  achseEnde = Math.ceil(achseEnde / 60) * 60;
-  const spanne = achseEnde - achseStart;
-  const stunden = Array.from({ length: spanne / 60 }, (_, i) => achseStart / 60 + i);
+  autoStart = Math.floor(autoStart / 60) * 60;
+  autoEnde = Math.ceil(autoEnde / 60) * 60;
+  const spanne = autoEnde - autoStart;
 
-  function bearbeiten(block: TimeBlock) {
-    setForm({
-      id: block.id,
-      titel: block.titel,
-      typ: block.typ,
-      von: alsZeit(block.start),
-      bis: alsZeit(block.ende),
-    });
+  // Sichtfenster: Auto-Fenster plus Verschiebung, geklemmt auf 00:00 bis 24:00.
+  const offsetMin = -autoStart;
+  const offsetMax = 24 * 60 - spanne - autoStart;
+  const klemmen = (wert: number) => Math.min(Math.max(wert, offsetMin), offsetMax);
+  const viewStart = autoStart + klemmen(offset);
+  const viewEnde = viewStart + spanne;
+
+  const ticks: number[] = [];
+  for (let h = Math.ceil(viewStart / 60); h * 60 <= viewEnde; h++) ticks.push(h);
+
+  function position(vonMin: number, bisMin: number) {
+    const start = Math.max(vonMin, viewStart);
+    const ende = Math.min(bisMin, viewEnde);
+    if (ende <= start) return null;
+    return {
+      left: `${((start - viewStart) / spanne) * 100}%`,
+      width: `${((ende - start) / spanne) * 100}%`,
+    };
+  }
+
+  // Ziehen zum Verschieben. Klicks auf Blöcke bleiben erhalten (Schwelle 5px),
+  // nach echtem Ziehen wird der Klick unterdrückt.
+  function pointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    drag.current = { x: e.clientX, offset: klemmen(offset), bewegt: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function pointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > 5) d.bewegt = true;
+    if (d.bewegt) {
+      const minutenProPixel = spanne / e.currentTarget.clientWidth;
+      setOffset(klemmen(d.offset - dx * minutenProPixel));
+    }
+  }
+  function pointerUp() {
+    // bewegt-Flag kurz stehen lassen, damit der Click-Capture es noch sieht.
+    setTimeout(() => (drag.current = null), 0);
+  }
+  function clickCapture(e: React.MouseEvent) {
+    if (drag.current?.bewegt) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
   }
 
   async function spontanBlocker() {
@@ -104,6 +143,16 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
     });
     onChange();
     bearbeiten(block);
+  }
+
+  function bearbeiten(block: TimeBlock) {
+    setForm({
+      id: block.id,
+      titel: block.titel,
+      typ: block.typ,
+      von: alsZeit(block.start),
+      bis: alsZeit(block.ende),
+    });
   }
 
   async function speichern(event: React.FormEvent) {
@@ -131,25 +180,33 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
 
   return (
     <div className="tagesleiste">
-      <div className="achse">
-        {stunden.map((h) => (
-          <div key={h} className="stunde">
+      <div
+        className="achse"
+        onPointerDown={pointerDown}
+        onPointerMove={pointerMove}
+        onPointerUp={pointerUp}
+        onPointerCancel={pointerUp}
+        onClickCapture={clickCapture}
+        onWheel={(e) => setOffset(klemmen(offset + (e.deltaX || e.deltaY) * 0.5))}
+      >
+        {ticks.map((h) => (
+          <div
+            key={h}
+            className="tick"
+            style={{ left: `${((h * 60 - viewStart) / spanne) * 100}%` }}
+          >
             <small>{String(h).padStart(2, "0")}</small>
           </div>
         ))}
         {kapazitaet.bloecke.map((block) => {
-          const start = Math.max(minuten(block.start), achseStart);
-          const ende = Math.min(minuten(block.ende), achseEnde);
-          if (ende <= start) return null;
+          const pos = position(minuten(block.start), minuten(block.ende));
+          if (!pos) return null;
           return (
             <button
               key={block.id}
               type="button"
               className={`block ${block.typ}`}
-              style={{
-                left: `${((start - achseStart) / spanne) * 100}%`,
-                width: `${((ende - start) / spanne) * 100}%`,
-              }}
+              style={pos}
               title={`${block.titel} – klicken zum Bearbeiten`}
               onClick={() => bearbeiten(block)}
             >
@@ -158,17 +215,14 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
           );
         })}
         {laufende.map(({ task, startMin }) => {
-          const start = Math.max(startMin === 0 ? achseStart : startMin, achseStart);
-          const ende = Math.min(Math.max(jetztMin, start + 4), achseEnde); // min. sichtbar breit
+          const pos = position(startMin, Math.max(jetztMin, startMin + 4));
+          if (!pos) return null;
           return (
             <button
               key={`task-${task.id}`}
               type="button"
               className="block task"
-              style={{
-                left: `${((start - achseStart) / spanne) * 100}%`,
-                width: `${((ende - start) / spanne) * 100}%`,
-              }}
+              style={pos}
               title={`${task.titel} – läuft seit ${startMin === 0 ? "gestern oder früher" : alsZeit(task.aktiv_seit!)}`}
               onClick={() => onTaskClick(task)}
             >
@@ -176,8 +230,8 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
             </button>
           );
         })}
-        {jetztMin >= achseStart && jetztMin <= achseEnde && (
-          <div className="jetzt" style={{ left: `${((jetztMin - achseStart) / spanne) * 100}%` }} />
+        {jetztMin >= viewStart && jetztMin <= viewEnde && (
+          <div className="jetzt" style={{ left: `${((jetztMin - viewStart) / spanne) * 100}%` }} />
         )}
       </div>
       <div className="leiste-fuss">
@@ -197,6 +251,21 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
         >
           + Termin/Blocker
         </button>
+        <span className="leiste-nav">
+          <button type="button" className="sekundaer" aria-label="Stunde zurück"
+                  onClick={() => setOffset(klemmen(offset - 60))}>
+            ‹
+          </button>
+          <button type="button" className="sekundaer" aria-label="Stunde vor"
+                  onClick={() => setOffset(klemmen(offset + 60))}>
+            ›
+          </button>
+          {klemmen(offset) !== 0 && (
+            <button type="button" className="sekundaer" onClick={() => setOffset(0)}>
+              Auto
+            </button>
+          )}
+        </span>
       </div>
       {form && (
         <form onSubmit={speichern} className="block-form">

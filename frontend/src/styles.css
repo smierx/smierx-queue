@@ -101,12 +101,22 @@ h2 {
   border-radius: 8px;
   padding: 14px 16px 10px;
 }
-.achse { position: relative; height: 92px; display: flex; }
-.achse .stunde { flex: 1; border-left: 1px solid var(--line); position: relative; }
-.achse .stunde:first-child { border-left: none; }
-.achse .stunde small {
+.achse {
+  position: relative; height: 92px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+}
+.achse:active { cursor: grabbing; }
+.achse .tick {
+  position: absolute; top: 0; bottom: 0;
+  border-left: 1px solid var(--line);
+  pointer-events: none;
+}
+.achse .tick small {
   position: absolute; top: -2px; left: 3px;
   color: var(--muted); font-size: 0.64rem;
+  white-space: nowrap;
 }
 .achse .block {
   position: absolute; top: 20px; height: 30px;
@@ -120,7 +130,8 @@ h2 {
 /* Laufende Tasks: zweite Spur unter Terminen/Blockern */
 .achse .block.task { top: 56px; background: #ddf0e2; color: #1e6e3c; border: 1px solid #b9e0c5; }
 .achse .jetzt { position: absolute; top: 12px; bottom: 0; width: 2px; background: var(--accent); }
-.leiste-fuss { margin-top: 8px; }
+.leiste-fuss { margin-top: 8px; display: flex; align-items: center; }
+.leiste-nav { margin-left: auto; display: inline-flex; gap: 4px; }
 .sekundaer {
   background: var(--surface);
   border: 1px solid var(--line);
