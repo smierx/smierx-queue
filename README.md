@@ -37,4 +37,21 @@ uv run alembic upgrade head
 uv run alembic revision --autogenerate -m "…"
 ```
 
-Keycloak-Dev-Login: Realm `smierx`, User `michel` / `michel`, Admin-Konsole auf http://localhost:8080 (admin/admin). Wird erst ab Phase 4 von der App genutzt.
+## Auth
+
+Ohne `OIDC_ISSUER` läuft die API im Dev-Modus (ein User `dev`, kein Login). Mit Keycloak: `OIDC_ISSUER` (+ optional `OIDC_JWKS_URL` für Container-Netze) fürs Backend, `FRONTEND_KEYCLOAK_URL` steuert den Login-Flow im Frontend. Das Frontend holt seine Config zur Laufzeit von `/api/config`, es wird nichts zur Build-Zeit eingebacken.
+
+Keycloak-Dev-Login: Realm `smierx`, User `michel` / `michel`, Admin-Konsole auf http://localhost:8080 (admin/admin).
+
+## GitLab-Sync (optional)
+
+Pro User über die UI einrichtbar: GitLab-URL, PAT (Scope `api`), Projekt-Ids. `POST /api/gitlab/sync` gleicht ab: offene Issues werden Tasks, geschlossene räumen ihren Task ab, Titel per last-write-wins (GitLab gewinnt bei Konflikt), Tags spiegeln sich als `queue::<tag>`-Labels. Sync ist Polling, kein Webhook: den Endpunkt bei Bedarf per cron anstoßen.
+
+## Deploy (Homeserver)
+
+Ein Image für alles: Multi-Stage-`Dockerfile` im Root baut das Frontend und liefert es über die API aus, Migrationen laufen beim Start. CI (`.github/workflows/build.yml`) testet und pusht nach GHCR, Watchtower zieht Updates:
+
+```sh
+cp .env.prod.example .env.prod   # ausfüllen
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+```

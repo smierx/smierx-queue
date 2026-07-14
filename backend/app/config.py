@@ -12,5 +12,10 @@ class Settings(BaseSettings):
     # Nur nötig wenn die API den Issuer-Host nicht auflösen kann (z.B. im Container).
     oidc_jwks_url: str | None = None
 
+    # Was das Frontend über /api/config bekommt. Leer = Frontend startet ohne Login.
+    frontend_keycloak_url: str | None = None
+    frontend_keycloak_realm: str = "smierx"
+    frontend_keycloak_client: str = "smierx-queue"
+
 
 settings = Settings()

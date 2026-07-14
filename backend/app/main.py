@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.config import settings
 from app.database import Base, engine
 from app.routers import gitlab, schedule, tasks, timeblocks
 
@@ -35,6 +36,16 @@ app.include_router(gitlab.router, prefix="/api")
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def frontend_config() -> dict:
+    """Laufzeit-Config fürs Frontend, damit das Image deployment-agnostisch bleibt."""
+    return {
+        "keycloak_url": settings.frontend_keycloak_url,
+        "keycloak_realm": settings.frontend_keycloak_realm,
+        "keycloak_client": settings.frontend_keycloak_client,
+    }
 
 
 # Im Produktions-Image liegt das gebaute Frontend unter static/.
