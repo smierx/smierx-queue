@@ -1,6 +1,7 @@
 def _block(client, titel="Daily", typ="meeting",
            start="2026-07-14T09:15:00", ende="2026-07-14T09:30:00"):
-    r = client.post("/api/timeblocks", json={"titel": titel, "typ": typ, "start": start, "ende": ende})
+    r = client.post("/api/timeblocks",
+                    json={"titel": titel, "typ": typ, "start": start, "ende": ende})
     assert r.status_code == 201
     return r.json()
 

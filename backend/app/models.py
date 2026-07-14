@@ -39,9 +39,11 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Keycloak-`sub`, im Dev-Modus "dev". Jeder sieht nur seine Zeilen.
+    user_id: Mapped[str] = mapped_column(String(100), index=True, default="dev")
     titel: Mapped[str] = mapped_column(String(300))
     beschreibung: Mapped[str] = mapped_column(Text, default="")
-    # Queue-Reihenfolge, klein = weiter oben. Reorder schreibt die Positionen neu.
+    # Queue-Reihenfolge pro User, klein = weiter oben. Reorder schreibt die Positionen neu.
     position: Mapped[int] = mapped_column(Integer, index=True)
     erstellt_am: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -91,6 +93,7 @@ class TimeBlock(Base):
     __tablename__ = "time_blocks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), index=True, default="dev")
     titel: Mapped[str] = mapped_column(String(300))
     typ: Mapped[str] = mapped_column(String(20))  # meeting | blocker
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -101,7 +104,7 @@ class TimeBlock(Base):
 
 
 class WorkSchedule(Base):
-    """Arbeitszeit-Modell. Bis Keycloak (Phase 4) genau eine globale Zeile, danach pro User.
+    """Arbeitszeit-Modell, eine Zeile pro User.
 
     modus "stunden": nur stunden_pro_tag zählt (Lage egal).
     modus "feste_zeiten": zeiten hält pro Wochentag ["HH:MM", "HH:MM"] oder null (frei).
@@ -110,6 +113,7 @@ class WorkSchedule(Base):
     __tablename__ = "work_schedules"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), unique=True, default="dev")
     modus: Mapped[str] = mapped_column(String(20), default="stunden")
     stunden_pro_tag: Mapped[float] = mapped_column(Float, default=8.0)
     # {"mo": ["08:00", "16:30"], ..., "sa": null, "so": null}
