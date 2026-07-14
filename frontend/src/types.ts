@@ -35,6 +35,19 @@ export interface TimeBlock {
   ende: string;
 }
 
+export interface GitlabConnection {
+  url: string;
+  projekt_ids: number[];
+}
+
+export interface SyncResult {
+  importiert: number;
+  aktualisiert_lokal: number;
+  gepusht: number;
+  geschlossen: number;
+  konflikte: string[];
+}
+
 export interface Capacity {
   datum: string;
   modus: "stunden" | "feste_zeiten";

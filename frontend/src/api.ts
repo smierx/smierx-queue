@@ -1,4 +1,4 @@
-import type { Capacity, Tag, TagEvent, Task, TimeBlock } from "./types";
+import type { Capacity, GitlabConnection, SyncResult, Tag, TagEvent, Task, TimeBlock } from "./types";
 
 // Wird in main.tsx gesetzt, sobald Keycloak konfiguriert ist.
 let tokenHolen: () => Promise<string | null> = async () => null;
@@ -37,4 +37,11 @@ export const api = {
   timeblockAnlegen: (daten: Omit<TimeBlock, "id">) =>
     request<TimeBlock>("/timeblocks", { method: "POST", body: JSON.stringify(daten) }),
   timeblockLoeschen: (id: number) => request<void>(`/timeblocks/${id}`, { method: "DELETE" }),
+  gitlabConnection: () => request<GitlabConnection>("/gitlab/connection"),
+  gitlabVerbinden: (daten: GitlabConnection & { token: string }) =>
+    request<GitlabConnection>("/gitlab/connection", {
+      method: "PUT",
+      body: JSON.stringify(daten),
+    }),
+  gitlabSync: () => request<SyncResult>("/gitlab/sync", { method: "POST" }),
 };

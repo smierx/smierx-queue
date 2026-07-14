@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { GitLabPanel } from "./GitLabPanel";
 import { Tagesleiste } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
 import { ALLE_TAGS, type Capacity, type Tag, type Task } from "./types";
@@ -157,6 +158,8 @@ export default function App() {
           <button type="submit">In die Queue</button>
         </form>
       </section>
+
+      <GitLabPanel onSynced={laden} />
 
       {detail && <TaskDetail task={detail} onClose={() => setDetail(null)} onChange={laden} />}
     </div>

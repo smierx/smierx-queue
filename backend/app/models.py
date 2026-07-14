@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -99,6 +100,38 @@ class TimeBlock(Base):
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     ende: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     erstellt_am: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class GitlabConnection(Base):
+    """Optionale GitLab-Anbindung, eine pro User. Ohne Verbindung läuft die App vollwertig."""
+
+    __tablename__ = "gitlab_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), unique=True)
+    url: Mapped[str] = mapped_column(String(300))  # z.B. https://gitlab.example.com
+    token: Mapped[str] = mapped_column(String(300))  # PAT mit api-Scope
+    projekt_ids: Mapped[list] = mapped_column(JSON_TYPE, default=list)
+
+
+class GitlabLink(Base):
+    """Verknüpfung Task ↔ GitLab-Issue, Dedup über (user, projekt, issue)."""
+
+    __tablename__ = "gitlab_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "projekt_id", "issue_iid", name="uq_gitlab_links_issue"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), unique=True
+    )
+    projekt_id: Mapped[int] = mapped_column(Integer)
+    issue_iid: Mapped[int] = mapped_column(Integer)
+    zuletzt_gesynct: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
