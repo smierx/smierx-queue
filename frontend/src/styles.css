@@ -1,0 +1,101 @@
+:root {
+  --bg: #f2f5f5;
+  --surface: #fff;
+  --ink: #1a2529;
+  --muted: #5d6e74;
+  --line: #dbe3e5;
+  --accent: #0f6b6f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+}
+
+.wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 1.3rem; letter-spacing: -0.02em; }
+h1 span { color: var(--accent); }
+
+.kapazitaet { text-align: right; font-weight: 600; }
+.kapazitaet small { display: block; color: var(--muted); font-weight: 400; }
+
+h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  margin: 28px 0 10px;
+}
+
+.fehler { color: #a02c22; }
+.leer { color: var(--muted); font-size: 0.9rem; }
+
+.karte, .zeile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.karte.critical { border-color: #e2b3ae; box-shadow: 0 0 0 3px #f6dcda66; }
+.karte strong { display: block; margin-bottom: 8px; }
+
+.zeile { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.zeile .pos { color: var(--muted); font-size: 0.8rem; min-width: 16px; text-align: right; }
+.zeile .titel { flex: 1; min-width: 160px; }
+
+.tagrow { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tag {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+}
+.tag.aus { color: var(--muted); border-color: var(--line); opacity: 0.55; }
+.tag.an.aktiv      { background: #ddf0e2; color: #1e6e3c; }
+.tag.an.next       { background: #dbe7f6; color: #26507e; }
+.tag.an.pausiert   { background: #f3ead2; color: #7d621d; }
+.tag.an.holding    { background: #e9e4f2; color: #5b4a86; }
+.tag.an.support    { background: #d9eff2; color: #1d626e; }
+.tag.an.discussion { background: #efe0ee; color: #7c3d76; }
+.tag.an.critical   { background: #f6dcda; color: #a02c22; }
+.tag.an.inaktiv    { background: #e7ebec; color: #5d6e74; }
+
+.aktionen { display: inline-flex; gap: 4px; }
+.aktionen button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.neu { display: flex; gap: 8px; margin-top: 12px; }
+.neu input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+}
+.neu button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
