@@ -78,6 +78,7 @@ def kapazitaet(
     tag_ende = datetime.combine(tag, time.max)
 
     # Rahmen aus dem Arbeitszeit-Modell.
+    fenster = None
     if schedule.modus == "feste_zeiten":
         fenster = (schedule.zeiten or {}).get(WOCHENTAGE[tag.weekday()])
         if fenster is None:
@@ -121,5 +122,7 @@ def kapazitaet(
         arbeitszeit_minuten=arbeitszeit,
         geblockt_minuten=geblockt,
         frei_minuten=max(0, arbeitszeit - geblockt),
+        fenster_von=fenster[0] if fenster else None,
+        fenster_bis=fenster[1] if fenster else None,
         bloecke=bloecke,
     )

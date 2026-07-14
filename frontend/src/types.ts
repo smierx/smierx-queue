@@ -19,6 +19,13 @@ export interface Task {
   tags: Tag[];
   erstellt_am: string;
   geaendert_am: string;
+  erledigt_am: string | null;
+}
+
+export interface Schedule {
+  modus: "stunden" | "feste_zeiten";
+  stunden_pro_tag: number;
+  zeiten: Record<string, [string, string] | null> | null;
 }
 
 export interface TagEvent {
@@ -45,6 +52,7 @@ export interface SyncResult {
   aktualisiert_lokal: number;
   gepusht: number;
   geschlossen: number;
+  wieder_geoeffnet: number;
   konflikte: string[];
 }
 
@@ -54,5 +62,7 @@ export interface Capacity {
   arbeitszeit_minuten: number;
   geblockt_minuten: number;
   frei_minuten: number;
+  fenster_von: string | null;
+  fenster_bis: string | null;
   bloecke: TimeBlock[];
 }

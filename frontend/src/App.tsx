@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
 import { GitLabPanel } from "./GitLabPanel";
+import { SchedulePanel } from "./SchedulePanel";
 import { Tagesleiste } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
 import { ALLE_TAGS, type Capacity, type Tag, type Task } from "./types";
@@ -31,6 +32,8 @@ function TagChips({ task, onToggle }: { task: Task; onToggle: (tag: Tag) => void
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [erledigte, setErledigte] = useState<Task[]>([]);
+  const [archivOffen, setArchivOffen] = useState(false);
   const [kapazitaet, setKapazitaet] = useState<Capacity | null>(null);
   const [neuerTitel, setNeuerTitel] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
@@ -48,9 +51,15 @@ export default function App() {
     }
   }, []);
 
+  const archivLaden = useCallback(() => api.tasksErledigt().then(setErledigte), []);
+
   useEffect(() => {
     laden();
   }, [laden]);
+
+  useEffect(() => {
+    if (archivOffen) archivLaden();
+  }, [archivOffen, archivLaden]);
 
   async function anlegen(event: React.FormEvent) {
     event.preventDefault();
@@ -66,17 +75,31 @@ export default function App() {
     laden();
   }
 
-  async function abgelegt(zielId: number) {
-    if (dragId === null || dragId === zielId) return;
-    const ids = tasks.map((t) => t.id).filter((id) => id !== dragId);
-    ids.splice(ids.indexOf(zielId), 0, dragId);
-    setDragId(null);
-    await api.umsortieren(ids);
+  async function erledigen(task: Task) {
+    await api.erledigen(task.id);
     laden();
+    if (archivOffen) archivLaden();
   }
 
   const aktive = tasks.filter((t) => t.tags.includes("aktiv"));
-  const queue = tasks.filter((t) => !t.tags.includes("aktiv"));
+  // Queue-Anzeige: next zuerst, dahinter der Rest, innerhalb der Gruppen nach Position.
+  const queue = tasks
+    .filter((t) => !t.tags.includes("aktiv"))
+    .sort((a, b) => {
+      const rangA = a.tags.includes("next") ? 0 : 1;
+      const rangB = b.tags.includes("next") ? 0 : 1;
+      return rangA - rangB || a.position - b.position;
+    });
+
+  async function abgelegt(zielId: number) {
+    if (dragId === null || dragId === zielId) return;
+    // Neue Reihenfolge aus der angezeigten Queue ableiten, aktive Tasks bleiben vorn.
+    const angezeigt = queue.map((t) => t.id).filter((id) => id !== dragId);
+    angezeigt.splice(angezeigt.indexOf(zielId), 0, dragId);
+    setDragId(null);
+    await api.umsortieren([...aktive.map((t) => t.id), ...angezeigt]);
+    laden();
+  }
 
   return (
     <div className="wrap">
@@ -102,6 +125,8 @@ export default function App() {
         {kapazitaet && <Tagesleiste kapazitaet={kapazitaet} onChange={laden} />}
       </section>
 
+      <SchedulePanel onChange={laden} />
+
       <section>
         <h2>Läuft gerade</h2>
         {aktive.length === 0 && <p className="leer">Nichts aktiv. Zieh dir was aus der Queue.</p>}
@@ -110,9 +135,19 @@ export default function App() {
             key={task.id}
             className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}
           >
-            <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
-              {task.titel}
-            </button>
+            <div className="karten-kopf">
+              <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+                {task.titel}
+              </button>
+              <button
+                type="button"
+                className="fertig"
+                title="Erledigt"
+                onClick={() => erledigen(task)}
+              >
+                ✓
+              </button>
+            </div>
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
           </article>
         ))}
@@ -120,7 +155,7 @@ export default function App() {
 
       <section>
         <h2>
-          Queue <span className="hint">ziehen zum Umsortieren, Titel klicken für Details</span>
+          Queue <span className="hint">next zuerst · ziehen zum Umsortieren</span>
         </h2>
         {queue.map((task) => (
           <article
@@ -141,11 +176,11 @@ export default function App() {
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
             <button
               type="button"
-              className="loeschen"
-              onClick={() => api.taskLoeschen(task.id).then(laden)}
-              aria-label="löschen"
+              className="fertig"
+              title="Erledigt"
+              onClick={() => erledigen(task)}
             >
-              ✕
+              ✓
             </button>
           </article>
         ))}
@@ -157,6 +192,47 @@ export default function App() {
           />
           <button type="submit">In die Queue</button>
         </form>
+      </section>
+
+      <section>
+        <h2>
+          <button type="button" className="aufklappen" onClick={() => setArchivOffen(!archivOffen)}>
+            Erledigt {archivOffen ? "▾" : "▸"}
+          </button>
+        </h2>
+        {archivOffen &&
+          (erledigte.length === 0 ? (
+            <p className="leer">Noch nichts erledigt.</p>
+          ) : (
+            erledigte.map((task) => (
+              <article key={task.id} className="zeile erledigt">
+                <span className="titel">{task.titel}</span>
+                <small>
+                  {task.erledigt_am && new Date(task.erledigt_am).toLocaleString("de-DE")}
+                </small>
+                <button
+                  type="button"
+                  className="sekundaer"
+                  onClick={() =>
+                    api.wiederOeffnen(task.id).then(() => {
+                      laden();
+                      archivLaden();
+                    })
+                  }
+                >
+                  Wieder öffnen
+                </button>
+                <button
+                  type="button"
+                  className="loeschen"
+                  aria-label="endgültig löschen"
+                  onClick={() => api.taskLoeschen(task.id).then(archivLaden)}
+                >
+                  ✕
+                </button>
+              </article>
+            ))
+          ))}
       </section>
 
       <GitLabPanel onSynced={laden} />

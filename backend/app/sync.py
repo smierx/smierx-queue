@@ -8,6 +8,7 @@ Regeln:
 - Tags spiegeln sich als GitLab-Labels `queue::<tag>`, fremde Labels bleiben unangetastet.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -17,6 +18,7 @@ from app.gitlab_client import GitLabClient
 from app.models import VALID_TAGS, GitlabConnection, GitlabLink, TagEvent, Task, TaskTag
 
 LABEL_PREFIX = "queue::"
+logger = logging.getLogger("smierx_queue.sync")
 
 
 def _utc_naiv(wert: datetime) -> datetime:
@@ -76,8 +78,10 @@ def sync_ausfuehren(db: Session, user: str, client: GitLabClient) -> dict:
         "aktualisiert_lokal": 0,
         "gepusht": 0,
         "geschlossen": 0,
+        "wieder_geoeffnet": 0,
         "konflikte": [],
     }
+    logger.info("Sync startet: User %s, Projekte %s", user, verbindung.projekt_ids)
 
     for projekt_id in verbindung.projekt_ids:
         for issue in client.issues(projekt_id):
@@ -112,9 +116,27 @@ def sync_ausfuehren(db: Session, user: str, client: GitLabClient) -> dict:
             task = db.get(Task, link.task_id)
 
             if issue["state"] == "closed":
-                db.delete(task)  # Link hängt per Cascade dran.
-                ergebnis["geschlossen"] += 1
+                # Erledigen statt löschen: der Task bleibt als Archiv samt Historie erhalten.
+                if task.erledigt_am is None:
+                    task.erledigt_am = _jetzt_utc()
+                    ergebnis["geschlossen"] += 1
+                    logger.info("Issue %s#%s zu → Task %s erledigt", projekt_id, iid, task.id)
+                link.zuletzt_gesynct = _jetzt_utc()
                 continue
+
+            if task.erledigt_am is not None:
+                # Issue wurde remote wieder geöffnet: Task zurück in die Queue.
+                task.erledigt_am = None
+                max_position = db.scalar(
+                    select(func.max(Task.position)).where(
+                        Task.user_id == user, Task.erledigt_am.is_(None)
+                    )
+                )
+                task.position = (max_position or 0) + 1
+                ergebnis["wieder_geoeffnet"] += 1
+                logger.info(
+                    "Issue %s#%s offen → Task %s wieder in der Queue", projekt_id, iid, task.id
+                )
 
             issue_geaendert = _utc_naiv(datetime.fromisoformat(issue["updated_at"]))
             task_geaendert = _utc_naiv(task.geaendert_am)
@@ -138,4 +160,7 @@ def sync_ausfuehren(db: Session, user: str, client: GitLabClient) -> dict:
             link.zuletzt_gesynct = _jetzt_utc()
 
     db.commit()
+    logger.info("Sync fertig: %s", {k: v for k, v in ergebnis.items() if k != "konflikte"})
+    for konflikt in ergebnis["konflikte"]:
+        logger.warning("Sync-Konflikt: %s", konflikt)
     return ergebnis

@@ -91,7 +91,7 @@ def test_import_offener_issues(client, fake):
     assert client.post("/api/gitlab/sync").json()["importiert"] == 0
 
 
-def test_geschlossenes_issue_raeumt_task_ab(client, fake):
+def test_geschlossenes_issue_archiviert_task(client, fake):
     _verbinden(client)
     fake.issue(1, "Wird erledigt")
     client.post("/api/gitlab/sync")
@@ -100,7 +100,25 @@ def test_geschlossenes_issue_raeumt_task_ab(client, fake):
     fake.issue(1, "Wird erledigt", state="closed")
     r = client.post("/api/gitlab/sync")
     assert r.json()["geschlossen"] == 1
+    # Raus aus der Queue, aber im Archiv samt Task erhalten.
     assert client.get("/api/tasks").json() == []
+    archiv = client.get("/api/tasks", params={"erledigt": "true"}).json()
+    assert [t["titel"] for t in archiv] == ["Wird erledigt"]
+    assert archiv[0]["erledigt_am"] is not None
+
+
+def test_reopened_issue_kommt_zurueck_in_die_queue(client, fake):
+    _verbinden(client)
+    fake.issue(1, "Kommt wieder")
+    client.post("/api/gitlab/sync")
+    fake.issue(1, "Kommt wieder", state="closed")
+    client.post("/api/gitlab/sync")
+    assert client.get("/api/tasks").json() == []
+
+    fake.issue(1, "Kommt wieder", state="opened")
+    r = client.post("/api/gitlab/sync")
+    assert r.json()["wieder_geoeffnet"] == 1
+    assert [t["titel"] for t in client.get("/api/tasks").json()] == ["Kommt wieder"]
 
 
 def test_lokale_aenderung_wird_gepusht(client, fake):

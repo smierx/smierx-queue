@@ -1,4 +1,13 @@
-import type { Capacity, GitlabConnection, SyncResult, Tag, TagEvent, Task, TimeBlock } from "./types";
+import type {
+  Capacity,
+  GitlabConnection,
+  Schedule,
+  SyncResult,
+  Tag,
+  TagEvent,
+  Task,
+  TimeBlock,
+} from "./types";
 
 // Wird in main.tsx gesetzt, sobald Keycloak konfiguriert ist.
 let tokenHolen: () => Promise<string | null> = async () => null;
@@ -22,6 +31,9 @@ async function request<T>(pfad: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   tasks: () => request<Task[]>("/tasks"),
+  tasksErledigt: () => request<Task[]>("/tasks?erledigt=true"),
+  erledigen: (id: number) => request<Task>(`/tasks/${id}/erledigt`, { method: "POST" }),
+  wiederOeffnen: (id: number) => request<Task>(`/tasks/${id}/erledigt`, { method: "DELETE" }),
   taskAnlegen: (titel: string) =>
     request<Task>("/tasks", { method: "POST", body: JSON.stringify({ titel }) }),
   taskAendern: (id: number, daten: { titel?: string; beschreibung?: string }) =>
@@ -36,7 +48,12 @@ export const api = {
   kapazitaet: () => request<Capacity>("/capacity"),
   timeblockAnlegen: (daten: Omit<TimeBlock, "id">) =>
     request<TimeBlock>("/timeblocks", { method: "POST", body: JSON.stringify(daten) }),
+  timeblockAendern: (id: number, daten: Omit<TimeBlock, "id">) =>
+    request<TimeBlock>(`/timeblocks/${id}`, { method: "PUT", body: JSON.stringify(daten) }),
   timeblockLoeschen: (id: number) => request<void>(`/timeblocks/${id}`, { method: "DELETE" }),
+  schedule: () => request<Schedule>("/schedule"),
+  scheduleSetzen: (daten: Schedule) =>
+    request<Schedule>("/schedule", { method: "PUT", body: JSON.stringify(daten) }),
   gitlabConnection: () => request<GitlabConnection>("/gitlab/connection"),
   gitlabVerbinden: (daten: GitlabConnection & { token: string }) =>
     request<GitlabConnection>("/gitlab/connection", {

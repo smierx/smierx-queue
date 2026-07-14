@@ -41,6 +41,7 @@ class TaskOut(BaseModel):
     tags: list[str]
     erstellt_am: datetime
     geaendert_am: datetime
+    erledigt_am: datetime | None
 
 
 class TagEventOut(BaseModel):
@@ -166,6 +167,7 @@ class SyncResult(BaseModel):
     aktualisiert_lokal: int
     gepusht: int
     geschlossen: int
+    wieder_geoeffnet: int
     konflikte: list[str]
 
 
@@ -175,4 +177,7 @@ class CapacityOut(BaseModel):
     arbeitszeit_minuten: int
     geblockt_minuten: int
     frei_minuten: int
+    # Tagesfenster bei festen Zeiten ("HH:MM"), null im Stunden-Modus und an freien Tagen.
+    fenster_von: str | None
+    fenster_bis: str | None
     bloecke: list[TimeBlockOut]

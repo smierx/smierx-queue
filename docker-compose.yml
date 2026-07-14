@@ -32,6 +32,8 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+psycopg://smierx_queue:smierx_queue@db:5432/smierx_queue
+      # Die App rechnet mit lokaler Zeit ("heute", Tagesfenster), Container-Default wäre UTC.
+      TZ: Europe/Berlin
       # Issuer wie ihn der Browser sieht; JWKS holt der Container über das interne Netz.
       OIDC_ISSUER: http://localhost:8080/realms/smierx
       OIDC_JWKS_URL: http://keycloak:8080/realms/smierx/protocol/openid-connect/certs

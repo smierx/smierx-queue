@@ -46,6 +46,8 @@ class Task(Base):
     beschreibung: Mapped[str] = mapped_column(Text, default="")
     # Queue-Reihenfolge pro User, klein = weiter oben. Reorder schreibt die Positionen neu.
     position: Mapped[int] = mapped_column(Integer, index=True)
+    # Gesetzt = Task ist erledigt und raus aus der Queue, bleibt aber als Archiv erhalten.
+    erledigt_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     erstellt_am: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

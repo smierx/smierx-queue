@@ -42,6 +42,15 @@ def test_kapazitaet_stunden_modus(client):
     assert daten["geblockt_minuten"] == 90
     assert daten["frei_minuten"] == 390
     assert len(daten["bloecke"]) == 2
+    # Stunden-Modus hat kein Tagesfenster.
+    assert daten["fenster_von"] is None
+
+
+def test_kapazitaet_liefert_fenster_bei_festen_zeiten(client):
+    client.put("/api/schedule", json=FESTE_ZEITEN)
+    daten = client.get("/api/capacity", params={"datum": "2026-07-14"}).json()
+    assert daten["fenster_von"] == "08:00"
+    assert daten["fenster_bis"] == "16:30"
 
 
 def test_kapazitaet_feste_zeiten_clippt_bloecke(client):

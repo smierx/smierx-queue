@@ -87,7 +87,8 @@ export function GitLabPanel({ onSynced }: { onSynced: () => void }) {
           {ergebnis && (
             <p className="sync-ergebnis">
               {ergebnis.importiert} importiert, {ergebnis.aktualisiert_lokal} aktualisiert,{" "}
-              {ergebnis.gepusht} gepusht, {ergebnis.geschlossen} abgeräumt.
+              {ergebnis.gepusht} gepusht, {ergebnis.geschlossen} erledigt,{" "}
+              {ergebnis.wieder_geoeffnet} wieder geöffnet.
               {ergebnis.konflikte.map((k) => (
                 <small key={k}>
                   <br />

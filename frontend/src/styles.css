@@ -181,6 +181,54 @@ h2 {
   cursor: pointer;
 }
 
+.karten-kopf { display: flex; align-items: flex-start; gap: 8px; }
+.karten-kopf .titel-knopf { margin-bottom: 8px; }
+.fertig {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: #1e6e3c;
+  border-radius: 6px;
+  padding: 2px 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fertig:hover { background: #ddf0e2; }
+
+.zeile.erledigt { opacity: 0.75; }
+.zeile.erledigt .titel { flex: 1; text-decoration: line-through; }
+.zeile.erledigt small { color: var(--muted); }
+
+.spontan {
+  background: #efe4d8;
+  border: 1px solid #e0cdb6;
+  color: #7a5326;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+/* Arbeitszeit-Panel */
+.schedule-panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+  align-items: flex-start;
+}
+.modus-wahl { display: flex; gap: 18px; }
+.modus-wahl label, .stunden-feld { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.stunden-feld input { width: 70px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.tage { display: flex; flex-direction: column; gap: 6px; }
+.tag-zeile { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+.tag-zeile .tag-name { display: flex; align-items: center; gap: 6px; width: 60px; }
+.tag-zeile input[type="time"] { border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+.schedule-panel button[type="submit"] {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 6px 16px; font: inherit; font-weight: 600; cursor: pointer;
+}
+
 /* GitLab-Panel */
 .aufklappen {
   background: none; border: none; font: inherit; color: inherit;
