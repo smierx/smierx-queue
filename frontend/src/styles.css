@@ -101,7 +101,7 @@ h2 {
   border-radius: 8px;
   padding: 14px 16px 10px;
 }
-.achse { position: relative; height: 56px; display: flex; }
+.achse { position: relative; height: 92px; display: flex; }
 .achse .stunde { flex: 1; border-left: 1px solid var(--line); position: relative; }
 .achse .stunde:first-child { border-left: none; }
 .achse .stunde small {
@@ -117,6 +117,8 @@ h2 {
 }
 .achse .block.meeting { background: #dbe7f6; color: #26507e; border: 1px solid #b9d0ec; }
 .achse .block.blocker { background: #efe4d8; color: #7a5326; border: 1px solid #e0cdb6; }
+/* Laufende Tasks: zweite Spur unter Terminen/Blockern */
+.achse .block.task { top: 56px; background: #ddf0e2; color: #1e6e3c; border: 1px solid #b9e0c5; }
 .achse .jetzt { position: absolute; top: 12px; bottom: 0; width: 2px; background: var(--accent); }
 .leiste-fuss { margin-top: 8px; }
 .sekundaer {

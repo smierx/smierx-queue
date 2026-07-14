@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { api } from "./api";
-import type { Capacity, TimeBlock } from "./types";
+import type { Capacity, Task, TimeBlock } from "./types";
 
 function minuten(iso: string): number {
   const d = new Date(iso);
@@ -40,11 +40,28 @@ interface FormDaten {
   bis: string;
 }
 
-export function Tagesleiste({ kapazitaet, onChange }: { kapazitaet: Capacity; onChange: () => void }) {
+export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
+  kapazitaet: Capacity;
+  aktive: Task[];
+  onChange: () => void;
+  onTaskClick: (task: Task) => void;
+}) {
   const [form, setForm] = useState<FormDaten | null>(null);
 
+  const jetzt = new Date();
+  const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
+  const heuteStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
+
+  // Laufende Tasks: Balken von "aktiv gesetzt" bis jetzt. Start vor heute → ab Achsenbeginn.
+  const laufende = aktive
+    .filter((t) => t.aktiv_seit !== null)
+    .map((t) => ({
+      task: t,
+      startMin: new Date(t.aktiv_seit!) < heuteStart ? 0 : minuten(t.aktiv_seit!),
+    }));
+
   // Rahmen: feste Zeiten aus dem Arbeitszeit-Modell, im Stunden-Modus 07 bis 16 Uhr.
-  // Blöcke außerhalb weiten die Achse, damit nichts unsichtbar bleibt.
+  // Blöcke und laufende Tasks außerhalb weiten die Achse, damit nichts unsichtbar bleibt.
   let achseStart = 7 * 60;
   let achseEnde = 16 * 60;
   if (kapazitaet.fenster_von && kapazitaet.fenster_bis) {
@@ -57,13 +74,14 @@ export function Tagesleiste({ kapazitaet, onChange }: { kapazitaet: Capacity; on
     achseStart = Math.min(achseStart, minuten(block.start));
     achseEnde = Math.max(achseEnde, minuten(block.ende));
   }
+  for (const { startMin } of laufende) {
+    if (startMin > 0) achseStart = Math.min(achseStart, startMin);
+    achseEnde = Math.max(achseEnde, jetztMin);
+  }
   achseStart = Math.floor(achseStart / 60) * 60;
   achseEnde = Math.ceil(achseEnde / 60) * 60;
   const spanne = achseEnde - achseStart;
   const stunden = Array.from({ length: spanne / 60 }, (_, i) => achseStart / 60 + i);
-
-  const jetzt = new Date();
-  const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
 
   function bearbeiten(block: TimeBlock) {
     setForm({
@@ -136,6 +154,25 @@ export function Tagesleiste({ kapazitaet, onChange }: { kapazitaet: Capacity; on
               onClick={() => bearbeiten(block)}
             >
               {block.titel}
+            </button>
+          );
+        })}
+        {laufende.map(({ task, startMin }) => {
+          const start = Math.max(startMin === 0 ? achseStart : startMin, achseStart);
+          const ende = Math.min(Math.max(jetztMin, start + 4), achseEnde); // min. sichtbar breit
+          return (
+            <button
+              key={`task-${task.id}`}
+              type="button"
+              className="block task"
+              style={{
+                left: `${((start - achseStart) / spanne) * 100}%`,
+                width: `${((ende - start) / spanne) * 100}%`,
+              }}
+              title={`${task.titel} – läuft seit ${startMin === 0 ? "gestern oder früher" : alsZeit(task.aktiv_seit!)}`}
+              onClick={() => onTaskClick(task)}
+            >
+              {task.titel}
             </button>
           );
         })}

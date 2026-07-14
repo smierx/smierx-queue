@@ -122,7 +122,14 @@ export default function App() {
 
       <section>
         <h2>Heute</h2>
-        {kapazitaet && <Tagesleiste kapazitaet={kapazitaet} onChange={laden} />}
+        {kapazitaet && (
+          <Tagesleiste
+            kapazitaet={kapazitaet}
+            aktive={aktive}
+            onChange={laden}
+            onTaskClick={setDetail}
+          />
+        )}
       </section>
 
       <SchedulePanel onChange={laden} />

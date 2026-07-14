@@ -58,6 +58,21 @@ def test_tag_historie(client):
     assert eintraege == [("next", "gesetzt"), ("aktiv", "gesetzt"), ("next", "entfernt")]
 
 
+def test_aktiv_seit(client):
+    task = _task(client)
+    assert task["aktiv_seit"] is None
+
+    r = client.put(f"/api/tasks/{task['id']}/tags/aktiv")
+    assert r.json()["aktiv_seit"] is not None
+
+    r = client.delete(f"/api/tasks/{task['id']}/tags/aktiv")
+    assert r.json()["aktiv_seit"] is None
+
+    # Erneut aktiv: aktiv_seit kommt vom neuen gesetzt-Event, nicht vom alten.
+    r = client.put(f"/api/tasks/{task['id']}/tags/aktiv")
+    assert r.json()["aktiv_seit"] is not None
+
+
 def test_filter_nach_tag(client):
     _task(client, "Ohne Tag")
     aktiv = _task(client, "Läuft", tags=["aktiv"])

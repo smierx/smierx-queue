@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -65,6 +65,21 @@ class Task(Base):
     @property
     def tags(self) -> list[str]:
         return sorted(zeile.tag for zeile in self.tag_zeilen)
+
+    @property
+    def aktiv_seit(self) -> datetime | None:
+        """Wann das aktuelle `aktiv`-Tag gesetzt wurde, als lokale Zeit (für die Tagesleiste)."""
+        if "aktiv" not in self.tags:
+            return None
+        for event in reversed(self.historie):
+            if event.tag == "aktiv" and event.aktion == "gesetzt":
+                zeitpunkt = event.zeitpunkt
+                # DB-Defaults sind UTC (SQLite naiv, Postgres aware) → lokale, naive Zeit,
+                # konsistent zu den TimeBlocks.
+                if zeitpunkt.tzinfo is None:
+                    zeitpunkt = zeitpunkt.replace(tzinfo=timezone.utc)
+                return zeitpunkt.astimezone().replace(tzinfo=None)
+        return None
 
 
 class TaskTag(Base):

@@ -2,6 +2,7 @@ from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import aktueller_user
@@ -18,8 +19,14 @@ def _schedule_holen(db: Session, user: str) -> WorkSchedule:
     if schedule is None:
         schedule = WorkSchedule(user_id=user)
         db.add(schedule)
-        db.commit()
-        db.refresh(schedule)
+        try:
+            db.commit()
+            db.refresh(schedule)
+        except IntegrityError:
+            # Beim ersten Seitenaufruf legen /schedule und /capacity parallel an,
+            # der Verlierer des Race liest einfach die Zeile des Gewinners.
+            db.rollback()
+            schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.user_id == user))
     return schedule
 
 

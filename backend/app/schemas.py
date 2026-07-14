@@ -42,6 +42,7 @@ class TaskOut(BaseModel):
     erstellt_am: datetime
     geaendert_am: datetime
     erledigt_am: datetime | None
+    aktiv_seit: datetime | None
 
 
 class TagEventOut(BaseModel):

@@ -20,6 +20,7 @@ export interface Task {
   erstellt_am: string;
   geaendert_am: string;
   erledigt_am: string | null;
+  aktiv_seit: string | null;
 }
 
 export interface Schedule {

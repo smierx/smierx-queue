@@ -5,6 +5,33 @@ FESTE_ZEITEN = {
 }
 
 
+def test_schedule_get_or_create_ueberlebt_race(client, monkeypatch):
+    """Zwei parallele Erst-Requests: der Verlierer der UNIQUE-Verletzung liest nach."""
+    from app.database import SessionLocal
+    from app.models import WorkSchedule
+    from app.routers.schedule import _schedule_holen
+
+    gewinner = SessionLocal()
+    gewinner.add(WorkSchedule(user_id="dev"))
+    gewinner.commit()
+    gewinner.close()
+
+    verlierer = SessionLocal()
+    echtes_scalar = verlierer.scalar
+    aufrufe = {"n": 0}
+
+    def scalar_mit_race(stmt):
+        aufrufe["n"] += 1
+        # Erster Blick: Zeile "noch nicht da" (der andere Request war schneller).
+        return None if aufrufe["n"] == 1 else echtes_scalar(stmt)
+
+    monkeypatch.setattr(verlierer, "scalar", scalar_mit_race)
+    schedule = _schedule_holen(verlierer, "dev")
+    assert schedule is not None
+    assert schedule.user_id == "dev"
+    verlierer.close()
+
+
 def test_default_schedule(client):
     r = client.get("/api/schedule")
     assert r.status_code == 200
