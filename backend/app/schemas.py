@@ -162,6 +162,14 @@ class ConnectionOut(BaseModel):
     projekt_ids: list[int]
 
 
+class SyncLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    zeitpunkt: datetime
+    aktion: str
+    details: dict
+
+
 class SyncResult(BaseModel):
     importiert: int
     aktualisiert_lokal: int

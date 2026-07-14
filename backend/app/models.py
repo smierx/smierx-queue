@@ -138,6 +138,21 @@ class GitlabLink(Base):
     )
 
 
+class SyncLog(Base):
+    """Persistente GitLab-Aktivität: Sync-Läufe und Issue-Statuswechsel, pro User."""
+
+    __tablename__ = "sync_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), index=True)
+    zeitpunkt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    aktion: Mapped[str] = mapped_column(String(30))  # sync | issue_close | issue_reopen
+    # sync: die Ergebnis-Zahlen + Konflikte. issue_*: projekt, iid, ok, ggf. fehler.
+    details: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+
+
 class WorkSchedule(Base):
     """Arbeitszeit-Modell, eine Zeile pro User.
 

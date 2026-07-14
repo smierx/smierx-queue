@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
 
 import { api } from "./api";
-import type { SyncResult } from "./types";
+import type { SyncLogEintrag, SyncResult } from "./types";
+
+function logZeile(eintrag: SyncLogEintrag): string {
+  const zeit = new Date(eintrag.zeitpunkt).toLocaleString("de-DE");
+  const d = eintrag.details;
+  if (eintrag.aktion === "sync") {
+    return `${zeit} – Sync: ${d.importiert} importiert, ${d.aktualisiert_lokal} aktualisiert, ${d.gepusht} gepusht, ${d.geschlossen} erledigt, ${d.wieder_geoeffnet} wieder geöffnet`;
+  }
+  const was = eintrag.aktion === "issue_close" ? "Issue geschlossen" : "Issue wieder geöffnet";
+  const status = d.ok ? "" : ` – FEHLER: ${d.fehler}`;
+  return `${zeit} – ${was}: ${d.projekt_id}#${d.issue_iid}${status}`;
+}
 
 export function GitLabPanel({ onSynced }: { onSynced: () => void }) {
   const [offen, setOffen] = useState(false);
@@ -10,7 +21,12 @@ export function GitLabPanel({ onSynced }: { onSynced: () => void }) {
   const [token, setToken] = useState("");
   const [projekte, setProjekte] = useState("");
   const [ergebnis, setErgebnis] = useState<SyncResult | null>(null);
+  const [log, setLog] = useState<SyncLogEintrag[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (offen && verbunden) api.gitlabLog().then(setLog).catch(() => {});
+  }, [offen, verbunden, ergebnis]);
 
   useEffect(() => {
     api
@@ -84,18 +100,22 @@ export function GitLabPanel({ onSynced }: { onSynced: () => void }) {
             )}
           </form>
           {fehler && <p className="fehler">{fehler}</p>}
-          {ergebnis && (
+          {ergebnis && ergebnis.konflikte.length > 0 && (
             <p className="sync-ergebnis">
-              {ergebnis.importiert} importiert, {ergebnis.aktualisiert_lokal} aktualisiert,{" "}
-              {ergebnis.gepusht} gepusht, {ergebnis.geschlossen} erledigt,{" "}
-              {ergebnis.wieder_geoeffnet} wieder geöffnet.
               {ergebnis.konflikte.map((k) => (
                 <small key={k}>
-                  <br />
                   Konflikt: {k}
+                  <br />
                 </small>
               ))}
             </p>
+          )}
+          {log.length > 0 && (
+            <ul className="sync-log">
+              {log.map((eintrag, i) => (
+                <li key={i}>{logZeile(eintrag)}</li>
+              ))}
+            </ul>
           )}
         </div>
       )}

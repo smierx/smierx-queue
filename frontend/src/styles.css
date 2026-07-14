@@ -248,5 +248,12 @@ h2 {
   padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
 }
 .sync-ergebnis { font-size: 0.85rem; color: var(--muted); margin-bottom: 0; }
+.sync-log {
+  list-style: none; padding: 10px 0 0; margin: 10px 0 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem; color: var(--muted);
+  display: flex; flex-direction: column; gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
 
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

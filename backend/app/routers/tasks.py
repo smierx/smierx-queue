@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import aktueller_user
 from app.database import get_db
-from app.models import VALID_TAGS, GitlabConnection, GitlabLink, TagEvent, Task, TaskTag
+from app.models import (
+    VALID_TAGS,
+    GitlabConnection,
+    GitlabLink,
+    SyncLog,
+    TagEvent,
+    Task,
+    TaskTag,
+)
 from app.schemas import QueueOrder, TagEventOut, TaskCreate, TaskOut, TaskUpdate
 
 router = APIRouter(tags=["tasks"])
@@ -30,18 +38,24 @@ def _issue_status_setzen(db: Session, task: Task, state_event: str) -> None:
         return
     from app.routers.gitlab import client_fuer
 
+    details = {"projekt_id": link.projekt_id, "issue_iid": link.issue_iid, "task_id": task.id}
     try:
         client_fuer(verbindung).issue_aktualisieren(
             link.projekt_id, link.issue_iid, state_event=state_event
         )
+        details["ok"] = True
         logger.info(
             "Issue %s#%s: %s (Task %s)", link.projekt_id, link.issue_iid, state_event, task.id
         )
     except Exception as fehler:
+        details["ok"] = False
+        details["fehler"] = str(fehler)
         logger.warning(
             "Issue %s#%s konnte nicht per %s aktualisiert werden: %s",
             link.projekt_id, link.issue_iid, state_event, fehler,
         )
+    aktion = "issue_close" if state_event == "close" else "issue_reopen"
+    db.add(SyncLog(user_id=task.user_id, aktion=aktion, details=details))
 
 
 def _task_holen(db: Session, task_id: int, user: str) -> Task:

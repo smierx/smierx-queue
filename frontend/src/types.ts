@@ -56,6 +56,12 @@ export interface SyncResult {
   konflikte: string[];
 }
 
+export interface SyncLogEintrag {
+  zeitpunkt: string;
+  aktion: "sync" | "issue_close" | "issue_reopen";
+  details: Record<string, unknown>;
+}
+
 export interface Capacity {
   datum: string;
   modus: "stunden" | "feste_zeiten";

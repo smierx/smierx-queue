@@ -139,6 +139,34 @@ def test_lokale_aenderung_wird_gepusht(client, fake):
     assert "queue::aktiv" not in label_update["remove_labels"]
 
 
+def test_sync_schreibt_log(client, fake):
+    _verbinden(client)
+    fake.issue(1, "Ein Issue")
+    client.post("/api/gitlab/sync")
+
+    log = client.get("/api/gitlab/log").json()
+    assert len(log) == 1
+    assert log[0]["aktion"] == "sync"
+    assert log[0]["details"]["importiert"] == 1
+
+
+def test_erledigen_loggt_issue_close(client, fake):
+    _verbinden(client)
+    fake.issue(1, "Wird abgehakt")
+    client.post("/api/gitlab/sync")
+
+    task = client.get("/api/tasks").json()[0]
+    client.post(f"/api/tasks/{task['id']}/erledigt")
+
+    log = client.get("/api/gitlab/log").json()
+    close = next(e for e in log if e["aktion"] == "issue_close")
+    assert close["details"] == {
+        "projekt_id": PROJEKT, "issue_iid": 1, "task_id": task["id"], "ok": True,
+    }
+    # Und das Issue wurde wirklich geschlossen.
+    assert any(u.get("state_event") == "close" for u in fake.updates)
+
+
 def test_remote_aenderung_gewinnt(client, fake):
     _verbinden(client)
     fake.issue(1, "Alter Titel", geaendert=_utc_jetzt() - timedelta(hours=2))

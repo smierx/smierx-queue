@@ -2,6 +2,7 @@ import type {
   Capacity,
   GitlabConnection,
   Schedule,
+  SyncLogEintrag,
   SyncResult,
   Tag,
   TagEvent,
@@ -61,4 +62,5 @@ export const api = {
       body: JSON.stringify(daten),
     }),
   gitlabSync: () => request<SyncResult>("/gitlab/sync", { method: "POST" }),
+  gitlabLog: () => request<SyncLogEintrag[]>("/gitlab/log?limit=20"),
 };

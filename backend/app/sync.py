@@ -15,7 +15,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.gitlab_client import GitLabClient
-from app.models import VALID_TAGS, GitlabConnection, GitlabLink, TagEvent, Task, TaskTag
+from app.models import (
+    VALID_TAGS,
+    GitlabConnection,
+    GitlabLink,
+    SyncLog,
+    TagEvent,
+    Task,
+    TaskTag,
+)
 
 LABEL_PREFIX = "queue::"
 logger = logging.getLogger("smierx_queue.sync")
@@ -159,6 +167,7 @@ def sync_ausfuehren(db: Session, user: str, client: GitLabClient) -> dict:
 
             link.zuletzt_gesynct = _jetzt_utc()
 
+    db.add(SyncLog(user_id=user, aktion="sync", details=ergebnis))
     db.commit()
     logger.info("Sync fertig: %s", {k: v for k, v in ergebnis.items() if k != "konflikte"})
     for konflikt in ergebnis["konflikte"]:

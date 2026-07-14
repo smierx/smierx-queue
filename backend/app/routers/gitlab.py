@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app.auth import aktueller_user
 from app.database import get_db
 from app.gitlab_client import GitLabClient
-from app.models import GitlabConnection
-from app.schemas import ConnectionOut, ConnectionUpdate, SyncResult
+from app.models import GitlabConnection, SyncLog
+from app.schemas import ConnectionOut, ConnectionUpdate, SyncLogOut, SyncResult
 from app.sync import sync_ausfuehren
 
 router = APIRouter(tags=["gitlab"])
@@ -68,3 +68,20 @@ def sync(db: Session = Depends(get_db), user: str = Depends(aktueller_user)) -> 
     if verbindung is None:
         raise HTTPException(404, "Keine GitLab-Verbindung eingerichtet")
     return sync_ausfuehren(db, user, client_fuer(verbindung))
+
+
+@router.get("/gitlab/log", response_model=list[SyncLogOut])
+def log_lesen(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    user: str = Depends(aktueller_user),
+) -> list[SyncLog]:
+    """Persistente GitLab-Aktivität, neueste zuerst."""
+    return list(
+        db.scalars(
+            select(SyncLog)
+            .where(SyncLog.user_id == user)
+            .order_by(SyncLog.zeitpunkt.desc(), SyncLog.id.desc())
+            .limit(min(limit, 200))
+        )
+    )
