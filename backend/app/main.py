@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, engine
-from app.routers import schedule, tasks, timeblocks
+from app.routers import gitlab, schedule, tasks, timeblocks
 
 
 @asynccontextmanager
@@ -24,11 +26,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(tasks.router)
-app.include_router(timeblocks.router)
-app.include_router(schedule.router)
+app.include_router(tasks.router, prefix="/api")
+app.include_router(timeblocks.router, prefix="/api")
+app.include_router(schedule.router, prefix="/api")
+app.include_router(gitlab.router, prefix="/api")
 
 
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+# Im Produktions-Image liegt das gebaute Frontend unter static/.
+_static = Path(__file__).parent.parent / "static"
+if _static.is_dir():
+    app.mount("/", StaticFiles(directory=_static, html=True), name="frontend")

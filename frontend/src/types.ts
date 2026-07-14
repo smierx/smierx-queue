@@ -21,6 +21,12 @@ export interface Task {
   geaendert_am: string;
 }
 
+export interface TagEvent {
+  tag: Tag;
+  aktion: "gesetzt" | "entfernt";
+  zeitpunkt: string;
+}
+
 export interface TimeBlock {
   id: number;
   titel: string;

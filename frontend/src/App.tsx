@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { Tagesleiste } from "./Tagesleiste";
+import { TaskDetail } from "./TaskDetail";
 import { ALLE_TAGS, type Capacity, type Tag, type Task } from "./types";
 
 function minutenAlsText(minuten: number): string {
@@ -31,6 +33,8 @@ export default function App() {
   const [kapazitaet, setKapazitaet] = useState<Capacity | null>(null);
   const [neuerTitel, setNeuerTitel] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Task | null>(null);
+  const [dragId, setDragId] = useState<number | null>(null);
 
   const laden = useCallback(async () => {
     try {
@@ -61,11 +65,11 @@ export default function App() {
     laden();
   }
 
-  async function verschieben(index: number, richtung: -1 | 1) {
-    const ziel = index + richtung;
-    if (ziel < 0 || ziel >= tasks.length) return;
-    const ids = tasks.map((t) => t.id);
-    [ids[index], ids[ziel]] = [ids[ziel], ids[index]];
+  async function abgelegt(zielId: number) {
+    if (dragId === null || dragId === zielId) return;
+    const ids = tasks.map((t) => t.id).filter((id) => id !== dragId);
+    ids.splice(ids.indexOf(zielId), 0, dragId);
+    setDragId(null);
     await api.umsortieren(ids);
     laden();
   }
@@ -93,43 +97,57 @@ export default function App() {
       {fehler && <p className="fehler">API nicht erreichbar: {fehler}</p>}
 
       <section>
+        <h2>Heute</h2>
+        {kapazitaet && <Tagesleiste kapazitaet={kapazitaet} onChange={laden} />}
+      </section>
+
+      <section>
         <h2>Läuft gerade</h2>
         {aktive.length === 0 && <p className="leer">Nichts aktiv. Zieh dir was aus der Queue.</p>}
         {aktive.map((task) => (
-          <article key={task.id} className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}>
-            <strong>{task.titel}</strong>
+          <article
+            key={task.id}
+            className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}
+          >
+            <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+              {task.titel}
+            </button>
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
           </article>
         ))}
       </section>
 
       <section>
-        <h2>Queue</h2>
-        {queue.map((task) => {
-          const index = tasks.findIndex((t) => t.id === task.id);
-          return (
-            <article key={task.id} className="zeile">
-              <span className="pos">{task.position}</span>
-              <span className="titel">{task.titel}</span>
-              <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
-              <span className="aktionen">
-                <button type="button" onClick={() => verschieben(index, -1)} aria-label="hoch">
-                  ↑
-                </button>
-                <button type="button" onClick={() => verschieben(index, 1)} aria-label="runter">
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => api.taskLoeschen(task.id).then(laden)}
-                  aria-label="löschen"
-                >
-                  ✕
-                </button>
-              </span>
-            </article>
-          );
-        })}
+        <h2>
+          Queue <span className="hint">ziehen zum Umsortieren, Titel klicken für Details</span>
+        </h2>
+        {queue.map((task) => (
+          <article
+            key={task.id}
+            className={`zeile ${dragId === task.id ? "am-ziehen" : ""}`}
+            draggable
+            onDragStart={() => setDragId(task.id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => abgelegt(task.id)}
+            onDragEnd={() => setDragId(null)}
+          >
+            <span className="grip" aria-hidden>
+              ⠿
+            </span>
+            <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+              {task.titel}
+            </button>
+            <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
+            <button
+              type="button"
+              className="loeschen"
+              onClick={() => api.taskLoeschen(task.id).then(laden)}
+              aria-label="löschen"
+            >
+              ✕
+            </button>
+          </article>
+        ))}
         <form onSubmit={anlegen} className="neu">
           <input
             value={neuerTitel}
@@ -139,6 +157,8 @@ export default function App() {
           <button type="submit">In die Queue</button>
         </form>
       </section>
+
+      {detail && <TaskDetail task={detail} onClose={() => setDetail(null)} onChange={laden} />}
     </div>
   );
 }

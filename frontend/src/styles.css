@@ -70,14 +70,97 @@ h2 {
 .tag.an.critical   { background: #f6dcda; color: #a02c22; }
 .tag.an.inaktiv    { background: #e7ebec; color: #5d6e74; }
 
-.aktionen { display: inline-flex; gap: 4px; }
-.aktionen button {
+.zeile .grip { color: #b6c2c6; cursor: grab; }
+.zeile.am-ziehen { opacity: 0.4; }
+.titel-knopf {
+  flex: 1;
+  min-width: 160px;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.karte .titel-knopf { font-weight: 600; display: block; margin-bottom: 8px; }
+.loeschen {
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 6px;
   padding: 2px 8px;
   cursor: pointer;
 }
+
+.hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Tagesleiste */
+.tagesleiste {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px 10px;
+}
+.achse { position: relative; height: 56px; display: flex; }
+.achse .stunde { flex: 1; border-left: 1px solid var(--line); position: relative; }
+.achse .stunde:first-child { border-left: none; }
+.achse .stunde small {
+  position: absolute; top: -2px; left: 3px;
+  color: var(--muted); font-size: 0.64rem;
+}
+.achse .block {
+  position: absolute; top: 20px; height: 30px;
+  border-radius: 5px; padding: 2px 6px;
+  font-size: 0.7rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.achse .block.meeting { background: #dbe7f6; color: #26507e; border: 1px solid #b9d0ec; }
+.achse .block.blocker { background: #efe4d8; color: #7a5326; border: 1px solid #e0cdb6; }
+.achse .jetzt { position: absolute; top: 12px; bottom: 0; width: 2px; background: var(--accent); }
+.leiste-fuss { margin-top: 8px; }
+.sekundaer {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.block-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.block-form input, .block-form select {
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit;
+}
+.block-form input:first-child { flex: 1; min-width: 140px; }
+.block-form button {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
+}
+
+/* Modal */
+.modal-hintergrund {
+  position: fixed; inset: 0; background: #1a252955;
+  display: grid; place-items: center; padding: 20px;
+}
+.modal {
+  background: var(--surface); border-radius: 10px; padding: 20px 22px;
+  width: min(520px, 100%); max-height: 85vh; overflow-y: auto;
+}
+.modal label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 12px; }
+.modal input, .modal textarea {
+  display: block; width: 100%; margin-top: 4px;
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  font: inherit; color: var(--ink);
+}
+.modal-aktionen { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-aktionen button[type="submit"] {
+  background: var(--accent); color: #fff; border: none; border-radius: 6px;
+  padding: 6px 16px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.modal h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 20px 0 8px; }
+.historie { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.historie small { color: var(--muted); }
 
 .neu { display: flex; gap: 8px; margin-top: 12px; }
 .neu input {
