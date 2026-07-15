@@ -208,3 +208,21 @@ def test_tick_hoechstens_ein_wechsel(client):
     client.post("/api/queue/tick")
     assert "aktiv" in _tags(client, b["id"])
     assert "aktiv" not in _tags(client, c["id"])
+
+
+def test_hintergrund_tick_wechselt_ohne_request(client):
+    # Die Schleife im Backend macht die Übergabe auch ohne offenen Browser.
+    from app.tick import alle_user_ticken
+
+    a = _task(client, "A", tags=["aktiv"])
+    b = _task(client, "B")
+    _abgelaufen(a["id"])
+
+    alle_user_ticken()
+    assert "aktiv" in _tags(client, b["id"])
+
+
+def test_hintergrund_tick_ohne_daten(client):
+    from app.tick import alle_user_ticken
+
+    alle_user_ticken()  # darf nicht knallen

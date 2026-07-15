@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     # Postgres im Produktivbetrieb. Default passt zum docker-compose.
     database_url: str = "postgresql+psycopg://smierx_queue:smierx_queue@localhost:5432/smierx_queue"
 
+    # Hintergrund-Tick für den automatischen Statuswechsel. 0 schaltet ihn ab.
+    tick_intervall_sekunden: int = 60
+
     # Keycloak. Ohne oidc_issuer läuft die API im Dev-Modus (ein User "dev", kein Login).
     oidc_issuer: str | None = None
     # Nur nötig wenn die API den Issuer-Host nicht auflösen kann (z.B. im Container).

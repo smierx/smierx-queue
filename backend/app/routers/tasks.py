@@ -262,16 +262,13 @@ def _geplantes_ende(
     return cursor + rest
 
 
-@router.post("/queue/tick", response_model=list[TaskOut])
-def queue_tick(
-    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> list[Task]:
+def uebergabe_pruefen(db: Session, user: str) -> Task | None:
     """Automatischer Statuswechsel als Übergabe: sind Tasks aktiv, aber keiner mehr
     in seiner geplanten Zeit (aktiv seit + Dauer, Blocker schieben das Ende nach
     hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
-    Feierabend), bleibt der Tick still. Mitten in einem Blocker passiert nichts.
-    Pro Tick höchstens ein Wechsel, geparkte Tasks (pausiert, holding, inaktiv)
-    bleiben liegen. Gibt die offene Task-Liste zurück, wie GET /tasks."""
+    Feierabend), passiert nichts. Mitten in einem Blocker passiert nichts.
+    Höchstens ein Wechsel pro Aufruf, geparkte Tasks (pausiert, holding, inaktiv)
+    bleiben liegen. Committet selbst, gibt den aktivierten Task zurück."""
     tasks = list(
         db.scalars(
             select(Task)
@@ -290,17 +287,36 @@ def queue_tick(
         and _geplantes_ende(t.aktiv_seit, t.dauer_minuten, fenster) > jetzt
         for t in aktive
     )
-    if aktive and not laeuft_noch and not im_blocker:
-        wartende = sorted(
-            (t for t in tasks if "aktiv" not in t.tags and not GEPARKT & set(t.tags)),
-            key=lambda t: (0 if "next" in t.tags else 1, t.position),
+    if not aktive or laeuft_noch or im_blocker:
+        return None
+    wartende = sorted(
+        (t for t in tasks if "aktiv" not in t.tags and not GEPARKT & set(t.tags)),
+        key=lambda t: (0 if "next" in t.tags else 1, t.position),
+    )
+    if not wartende:
+        return None
+    naechster = wartende[0]
+    _tag_anwenden(naechster, "aktiv")
+    db.commit()
+    logger.info("Auto-aktiviert: Task %s (%s) für %s", naechster.id, naechster.titel, user)
+    return naechster
+
+
+@router.post("/queue/tick", response_model=list[TaskOut])
+def queue_tick(
+    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
+) -> list[Task]:
+    """Übergabe prüfen (siehe uebergabe_pruefen) und die offene Task-Liste
+    zurückgeben, wie GET /tasks. Läuft zusätzlich als Hintergrund-Schleife
+    im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
+    uebergabe_pruefen(db, user)
+    return list(
+        db.scalars(
+            select(Task)
+            .where(Task.user_id == user, Task.erledigt_am.is_(None))
+            .order_by(Task.position)
         )
-        if wartende:
-            naechster = wartende[0]
-            _tag_anwenden(naechster, "aktiv")
-            db.commit()
-            logger.info("Auto-aktiviert: Task %s (%s)", naechster.id, naechster.titel)
-    return tasks
+    )
 
 
 @router.post("/queue/feierabend", response_model=list[TaskOut])

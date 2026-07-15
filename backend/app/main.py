@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,13 +10,26 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import Base, engine
 from app.routers import export, gitlab, schedule, tasks, timeblocks
+from app.tick import tick_schleife
+
+# Uvicorn konfiguriert nur seine eigenen Logger. Ohne das hier landen die
+# smierx_queue.*-Logs (Tick, Sync) nirgends.
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Für Dev und Tests. Produktiv-Migrationen laufen über Alembic.
     Base.metadata.create_all(engine)
+    # Hintergrund-Tick: Statuswechsel laufen auch ohne offenen Browser.
+    schleife = (
+        asyncio.create_task(tick_schleife()) if settings.tick_intervall_sekunden > 0 else None
+    )
     yield
+    if schleife is not None:
+        schleife.cancel()
 
 
 app = FastAPI(title="smierx-queue", version="0.1.0", lifespan=lifespan)
