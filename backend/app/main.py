@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import gitlab, schedule, tasks, timeblocks
+from app.routers import export, gitlab, schedule, tasks, timeblocks
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(timeblocks.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
 app.include_router(gitlab.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
 
 
 @app.get("/health")

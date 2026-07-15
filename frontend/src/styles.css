@@ -154,6 +154,13 @@ h2 {
   font-size: 0.82rem;
   cursor: pointer;
 }
+/* Wochen-Export */
+.export-zeile { display: flex; gap: 8px; align-items: center; }
+.export-zeile input {
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit;
+}
+.export-zeile .hint { color: var(--muted); font-size: 0.8rem; }
+
 /* Von/Bis nebeneinander im Blocker-Modal */
 .zeit-zeile { display: flex; gap: 12px; align-items: flex-end; }
 .zeit-zeile button { margin-bottom: 12px; }

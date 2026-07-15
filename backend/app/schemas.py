@@ -192,6 +192,53 @@ class SyncResult(BaseModel):
     konflikte: list[str]
 
 
+# --- Wochen-Export ---
+
+
+class ExportPhase(BaseModel):
+    """Eine aktiv-Phase, auf die Woche zugeschnitten. Blocker-Zeit ist abgezogen."""
+
+    task_id: int
+    titel: str
+    tags: list[str]
+    von: datetime
+    bis: datetime
+    minuten: int
+    offen: bool  # Phase lief beim Export noch
+
+
+class ExportErledigt(BaseModel):
+    task_id: int
+    titel: str
+    erledigt_am: datetime
+    dauer_minuten: int
+
+
+class ExportBlock(BaseModel):
+    titel: str
+    typ: str
+    start: datetime
+    ende: datetime
+    minuten: int  # auf die Woche zugeschnitten
+
+
+class ExportSummary(BaseModel):
+    gearbeitet_minuten: int
+    geblockt_minuten: int
+    erledigte_tasks: int
+
+
+class ExportOut(BaseModel):
+    woche: str
+    von: datetime
+    bis: datetime  # exklusiv, Montag der Folgewoche
+    erstellt_am: datetime
+    phasen: list[ExportPhase]
+    erledigt: list[ExportErledigt]
+    bloecke: list[ExportBlock]
+    zusammenfassung: ExportSummary
+
+
 class CapacityOut(BaseModel):
     datum: str
     modus: str

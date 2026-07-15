@@ -13,6 +13,16 @@ function minutenAlsText(minuten: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+function aktuelleWoche(): string {
+  // ISO-Woche: der Donnerstag der Woche bestimmt Jahr und Nummer.
+  const d = new Date();
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const jahresanfang = Date.UTC(t.getUTCFullYear(), 0, 1);
+  const woche = Math.ceil(((t.getTime() - jahresanfang) / 86_400_000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(woche).padStart(2, "0")}`;
+}
+
 function TagChips({ task, onToggle }: { task: Task; onToggle: (tag: Tag) => void }) {
   return (
     <span className="tagrow">
@@ -39,6 +49,7 @@ export default function App() {
   const [fehler, setFehler] = useState<string | null>(null);
   const [detail, setDetail] = useState<Task | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
+  const [exportWoche, setExportWoche] = useState(aktuelleWoche());
 
   const laden = useCallback(async () => {
     try {
@@ -82,6 +93,18 @@ export default function App() {
   async function erledigen(task: Task) {
     await api.erledigen(task.id);
     laden();
+  }
+
+  async function exportieren() {
+    if (!exportWoche) return;
+    const daten = await api.exportWoche(exportWoche);
+    const blob = new Blob([JSON.stringify(daten, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `smierx-queue-${exportWoche}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   const aktive = tasks.filter((t) => t.tags.includes("aktiv"));
@@ -255,6 +278,21 @@ export default function App() {
       </section>
 
       <GitLabPanel onSynced={laden} />
+
+      <section>
+        <h2>Export</h2>
+        <div className="export-zeile">
+          <input
+            type="week"
+            value={exportWoche}
+            onChange={(e) => setExportWoche(e.target.value)}
+          />
+          <button type="button" className="sekundaer" onClick={exportieren}>
+            Woche als JSON exportieren
+          </button>
+          <span className="hint">aktiv-Phasen, Erledigtes und Blocker der Woche</span>
+        </div>
+      </section>
 
       {detail && <TaskDetail task={detail} onClose={() => setDetail(null)} onChange={laden} />}
     </div>

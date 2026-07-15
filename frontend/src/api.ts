@@ -68,4 +68,6 @@ export const api = {
     }),
   gitlabSync: () => request<SyncResult>("/gitlab/sync", { method: "POST" }),
   gitlabLog: () => request<SyncLogEintrag[]>("/gitlab/log?limit=20"),
+  // Wochen-Export als JSON-Objekt, der Download passiert im Aufrufer.
+  exportWoche: (woche: string) => request<unknown>(`/export?woche=${woche}`),
 };
