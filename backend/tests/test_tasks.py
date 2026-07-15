@@ -50,12 +50,18 @@ def test_tag_setzen_und_entfernen(client):
 
 def test_tag_historie(client):
     task = _task(client, tags=["next"])
+    # aktiv verdrängt next (Zustand-Tags schließen sich aus), beides landet in der Historie.
     client.put(f"/api/tasks/{task['id']}/tags/aktiv")
-    client.delete(f"/api/tasks/{task['id']}/tags/next")
+    client.delete(f"/api/tasks/{task['id']}/tags/aktiv")
 
     r = client.get(f"/api/tasks/{task['id']}/historie")
     eintraege = [(e["tag"], e["aktion"]) for e in r.json()]
-    assert eintraege == [("next", "gesetzt"), ("aktiv", "gesetzt"), ("next", "entfernt")]
+    assert eintraege == [
+        ("next", "gesetzt"),
+        ("next", "entfernt"),
+        ("aktiv", "gesetzt"),
+        ("aktiv", "entfernt"),
+    ]
 
 
 def test_aktiv_seit(client):

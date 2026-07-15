@@ -2,12 +2,16 @@ export const ALLE_TAGS = [
   "aktiv",
   "next",
   "critical",
-  "support",
   "discussion",
   "holding",
   "pausiert",
   "inaktiv",
 ] as const;
+
+// Support ist bewusst ein Blocker-Typ und kein Task-Tag: Support-Zeit blockt den Tag.
+export const BLOCK_TYPEN = ["meeting", "blocker", "support"] as const;
+
+export type BlockTyp = (typeof BLOCK_TYPEN)[number];
 
 export type Tag = (typeof ALLE_TAGS)[number];
 
@@ -16,11 +20,13 @@ export interface Task {
   titel: string;
   beschreibung: string;
   position: number;
+  dauer_minuten: number;
   tags: Tag[];
   erstellt_am: string;
   geaendert_am: string;
   erledigt_am: string | null;
   aktiv_seit: string | null;
+  aktiv_phasen: { von: string; bis: string | null }[];
 }
 
 export interface Schedule {
@@ -38,7 +44,7 @@ export interface TagEvent {
 export interface TimeBlock {
   id: number;
   titel: string;
-  typ: "meeting" | "blocker";
+  typ: BlockTyp;
   start: string;
   ende: string;
 }

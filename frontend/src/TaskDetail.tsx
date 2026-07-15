@@ -10,6 +10,7 @@ export function TaskDetail({ task, onClose, onChange }: {
 }) {
   const [titel, setTitel] = useState(task.titel);
   const [beschreibung, setBeschreibung] = useState(task.beschreibung);
+  const [dauer, setDauer] = useState(String(task.dauer_minuten));
   const [historie, setHistorie] = useState<TagEvent[]>([]);
 
   useEffect(() => {
@@ -18,7 +19,8 @@ export function TaskDetail({ task, onClose, onChange }: {
 
   async function speichern(event: React.FormEvent) {
     event.preventDefault();
-    await api.taskAendern(task.id, { titel, beschreibung });
+    const dauerMinuten = Math.min(Math.max(Number(dauer) || 60, 5), 24 * 60);
+    await api.taskAendern(task.id, { titel, beschreibung, dauer_minuten: dauerMinuten });
     onChange();
     onClose();
   }
@@ -37,6 +39,17 @@ export function TaskDetail({ task, onClose, onChange }: {
               value={beschreibung}
               onChange={(e) => setBeschreibung(e.target.value)}
               rows={5}
+            />
+          </label>
+          <label>
+            Dauer (Minuten)
+            <input
+              type="number"
+              min={5}
+              max={24 * 60}
+              step={5}
+              value={dauer}
+              onChange={(e) => setDauer(e.target.value)}
             />
           </label>
           <div className="modal-aktionen">

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models import SCHEDULE_MODI, TIMEBLOCK_TYPEN, VALID_TAGS
+from app.models import SCHEDULE_MODI, TIMEBLOCK_TYPEN, VALID_TAGS, ZUSTAND_TAGS
 
 WOCHENTAGE = ["mo", "di", "mi", "do", "fr", "sa", "so"]
 
@@ -12,6 +12,9 @@ def _tags_pruefen(tags: list[str]) -> list[str]:
     if unbekannt:
         gueltig = ", ".join(sorted(VALID_TAGS))
         raise ValueError(f"Unbekannte Tags: {sorted(unbekannt)}. Gültig sind: {gueltig}")
+    zustand = set(tags) & ZUSTAND_TAGS
+    if len(zustand) > 1:
+        raise ValueError(f"Zustand-Tags schließen sich aus, nur einer erlaubt: {sorted(zustand)}")
     return sorted(set(tags))
 
 
@@ -22,6 +25,7 @@ class TaskCreate(BaseModel):
     titel: str = Field(min_length=1, max_length=300)
     beschreibung: str = ""
     tags: list[str] = []
+    dauer_minuten: int = Field(default=60, ge=5, le=24 * 60)
 
     _tags = field_validator("tags")(_tags_pruefen)
 
@@ -29,6 +33,12 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     titel: str | None = Field(default=None, min_length=1, max_length=300)
     beschreibung: str | None = None
+    dauer_minuten: int | None = Field(default=None, ge=5, le=24 * 60)
+
+
+class AktivPhase(BaseModel):
+    von: datetime
+    bis: datetime | None
 
 
 class TaskOut(BaseModel):
@@ -38,11 +48,13 @@ class TaskOut(BaseModel):
     titel: str
     beschreibung: str
     position: int
+    dauer_minuten: int
     tags: list[str]
     erstellt_am: datetime
     geaendert_am: datetime
     erledigt_am: datetime | None
     aktiv_seit: datetime | None
+    aktiv_phasen: list[AktivPhase]
 
 
 class TagEventOut(BaseModel):

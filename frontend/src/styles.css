@@ -65,7 +65,6 @@ h2 {
 .tag.an.next       { background: #dbe7f6; color: #26507e; }
 .tag.an.pausiert   { background: #f3ead2; color: #7d621d; }
 .tag.an.holding    { background: #e9e4f2; color: #5b4a86; }
-.tag.an.support    { background: #d9eff2; color: #1d626e; }
 .tag.an.discussion { background: #efe0ee; color: #7c3d76; }
 .tag.an.critical   { background: #f6dcda; color: #a02c22; }
 .tag.an.inaktiv    { background: #e7ebec; color: #5d6e74; }
@@ -93,6 +92,7 @@ h2 {
 }
 
 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.h2-aktion { margin-left: 10px; text-transform: none; letter-spacing: 0; }
 
 /* Tagesleiste */
 .tagesleiste {
@@ -102,7 +102,7 @@ h2 {
   padding: 14px 16px 10px;
 }
 .achse {
-  position: relative; height: 92px;
+  position: relative; /* Höhe kommt inline, wächst mit den Task-Ebenen */
   overflow: hidden;
   cursor: grab;
   touch-action: pan-y;
@@ -127,8 +127,21 @@ h2 {
 }
 .achse .block.meeting { background: #dbe7f6; color: #26507e; border: 1px solid #b9d0ec; }
 .achse .block.blocker { background: #efe4d8; color: #7a5326; border: 1px solid #e0cdb6; }
-/* Laufende Tasks: zweite Spur unter Terminen/Blockern */
-.achse .block.task { top: 56px; background: #ddf0e2; color: #1e6e3c; border: 1px solid #b9e0c5; }
+.achse .block.support { background: #d9eff2; color: #1d626e; border: 1px solid #b5dde3; }
+/* Tasks: Spuren unter Terminen/Blockern, top kommt inline (Ebenen-Layout) */
+.achse .block.task { background: #ddf0e2; color: #1e6e3c; border: 1px solid #b9e0c5; }
+/* Läuft über die geplante Dauer hinaus */
+.achse .block.task.ueberzogen { border-color: #d8a13c; background: #f0ecd8; color: #6e5a1e; }
+/* Vergangene aktiv-Phasen: bleiben stehen, aber zurückhaltend */
+.achse .block.task.vergangen { opacity: 0.55; font-weight: 400; }
+/* Geplante Queue-Tasks: eine Ebene, nacheinander */
+.achse .block.task.geplant { background: #eef1f4; color: #4a5a66; border: 1px dashed #b9c4cd; }
+/* Griff am rechten Rand: Ziehen ändert die Dauer */
+.achse .block .resize-griff {
+  position: absolute; top: 0; right: 0; width: 10px; height: 100%;
+  cursor: ew-resize; border-radius: 0 5px 5px 0;
+}
+.achse .block .resize-griff:hover { background: #00000018; }
 .achse .jetzt { position: absolute; top: 12px; bottom: 0; width: 2px; background: var(--accent); }
 .leiste-fuss { margin-top: 8px; display: flex; align-items: center; }
 .leiste-nav { margin-left: auto; display: inline-flex; gap: 4px; }
@@ -141,15 +154,9 @@ h2 {
   font-size: 0.82rem;
   cursor: pointer;
 }
-.block-form { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.block-form input, .block-form select {
-  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit;
-}
-.block-form input:first-child { flex: 1; min-width: 140px; }
-.block-form button {
-  background: var(--accent); color: #fff; border: none; border-radius: 6px;
-  padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
-}
+/* Von/Bis nebeneinander im Blocker-Modal */
+.zeit-zeile { display: flex; gap: 12px; align-items: flex-end; }
+.zeit-zeile button { margin-bottom: 12px; }
 
 /* Modal */
 .modal-hintergrund {
@@ -161,7 +168,7 @@ h2 {
   width: min(520px, 100%); max-height: 85vh; overflow-y: auto;
 }
 .modal label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 12px; }
-.modal input, .modal textarea {
+.modal input, .modal textarea, .modal select {
   display: block; width: 100%; margin-top: 4px;
   border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
   font: inherit; color: var(--ink);

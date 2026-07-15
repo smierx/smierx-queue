@@ -1,7 +1,18 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
-import type { Capacity, Task, TimeBlock } from "./types";
+import { BLOCK_TYPEN, type BlockTyp, type Capacity, type Task, type TimeBlock } from "./types";
+
+const BLOCK_NAMEN: Record<BlockTyp, string> = {
+  meeting: "Meeting",
+  blocker: "Blocker",
+  support: "Support",
+};
+
+// Vertikales Layout der Achse: Task-Ebenen beginnen unter der Termin-Spur.
+const EBENE_TOP = 56;
+const EBENE_HOEHE = 34;
+const TAG_ENDE = 24 * 60;
 
 function minuten(iso: string): number {
   const d = new Date(iso);
@@ -11,6 +22,18 @@ function minuten(iso: string): number {
 function alsZeit(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function alsUhr(min: number): string {
+  const voll = Math.min(Math.max(Math.round(min), 0), TAG_ENDE - 1);
+  return `${String(Math.floor(voll / 60)).padStart(2, "0")}:${String(voll % 60).padStart(2, "0")}`;
+}
+
+function dauerText(minuten: number): string {
+  const h = Math.floor(minuten / 60);
+  const m = minuten % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 function heuteUm(zeit: string): string {
@@ -35,14 +58,35 @@ function zeitPlus(zeit: string, plusMinuten: number): string {
 interface FormDaten {
   id: number | null; // null = neu anlegen
   titel: string;
-  typ: "meeting" | "blocker";
+  typ: BlockTyp;
   von: string;
   bis: string;
 }
 
-export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
+// Zeitabschnitt in Minuten seit Mitternacht.
+interface Seg {
+  von: number;
+  bis: number;
+}
+
+// Ein Balken im Zeitstrahl: eine aktiv-Phase oder ein geplanter Slot,
+// von Blocker-Fenstern in Segmente zerteilt.
+interface Balken {
+  task: Task;
+  segs: Seg[];
+  art: "laeuft" | "vergangen";
+  ueberzogen: boolean;
+  ende: number; // effektives Ende (fürs Anstellen der Warteliste)
+  basisEnde: number; // Ende mit gespeicherter Dauer (fürs Auto-Fenster, zappelt nicht beim Ziehen)
+  ebene: number;
+  key: string;
+}
+
+export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange, onTaskClick }: {
   kapazitaet: Capacity;
   aktive: Task[];
+  geplante: Task[];
+  erledigte: Task[];
   onChange: () => void;
   onTaskClick: (task: Task) => void;
 }) {
@@ -50,21 +94,147 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
   // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
   const [offset, setOffset] = useState(0);
   const drag = useRef<{ x: number; offset: number; bewegt: boolean } | null>(null);
+  const achseRef = useRef<HTMLDivElement>(null);
+
+  // Ziehen am rechten Balkenrand ändert die Dauer. Während des Ziehens hält
+  // resizeDauer den Live-Wert, gespeichert wird erst beim Loslassen.
+  const resize = useRef<{
+    id: number;
+    x: number;
+    dauer0: number;
+    dauer: number;
+    minProPx: number;
+    bewegt: boolean;
+  } | null>(null);
+  const [resizeDauer, setResizeDauer] = useState<{ id: number; dauer: number } | null>(null);
+  const klickSperre = useRef(false);
+
+  // Nach dem Speichern kommt die neue Dauer über die Props zurück, dann darf
+  // der Live-Wert weg. Nicht mitten im Ziehen (Poll alle 30s).
+  useEffect(() => {
+    if (!resize.current) setResizeDauer(null);
+  }, [aktive, geplante, erledigte]);
+
+  const effektiveDauer = (t: Task) =>
+    resizeDauer?.id === t.id ? resizeDauer.dauer : t.dauer_minuten;
 
   const jetzt = new Date();
   const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
   const heuteStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
+  const minAbHeute = (d: Date) => (d.getTime() - heuteStart.getTime()) / 60_000;
 
-  // Laufende Tasks: Balken von "aktiv gesetzt" bis jetzt. Start vor heute → ab Tagesanfang.
-  const laufende = aktive
-    .filter((t) => t.aktiv_seit !== null)
-    .map((t) => ({
-      task: t,
-      startMin: new Date(t.aktiv_seit!) < heuteStart ? 0 : minuten(t.aktiv_seit!),
-    }));
+  // Blocker und Meetings als sortierte, überlappungsfreie Fenster. Sie zählen
+  // nicht als Arbeitszeit und zerteilen alle Task-Balken.
+  const fenster: Seg[] = [];
+  for (const block of [...kapazitaet.bloecke].sort((a, b) => minuten(a.start) - minuten(b.start))) {
+    const von = Math.max(0, minuten(block.start));
+    const bis = Math.min(TAG_ENDE, minuten(block.ende));
+    if (bis <= von) continue;
+    const letztes = fenster[fenster.length - 1];
+    if (letztes && von <= letztes.bis) letztes.bis = Math.max(letztes.bis, bis);
+    else fenster.push({ von, bis });
+  }
+
+  // Dauer ab einem Startpunkt in freie Segmente legen. Blocker-Fenster werden
+  // übersprungen und schieben das Ende nach hinten.
+  function freieSegmente(von: number, dauer: number): { segs: Seg[]; ende: number } {
+    const segs: Seg[] = [];
+    let cursor = von;
+    let rest = dauer;
+    for (const f of fenster) {
+      if (f.bis <= cursor) continue;
+      const frei = f.von - cursor;
+      if (frei >= rest) break;
+      if (frei > 0) {
+        segs.push({ von: cursor, bis: f.von });
+        rest -= frei;
+      }
+      cursor = Math.max(cursor, f.bis);
+    }
+    segs.push({ von: cursor, bis: cursor + rest });
+    return { segs, ende: cursor + rest };
+  }
+
+  // Festen Zeitraum nur optisch an den Fenstern auftrennen (vergangene Phasen,
+  // da wird keine Zeit nachgeschoben).
+  function zerschneide(von: number, bis: number): Seg[] {
+    const segs: Seg[] = [];
+    let cursor = von;
+    for (const f of fenster) {
+      if (f.bis <= cursor) continue;
+      if (f.von >= bis) break;
+      if (f.von > cursor) segs.push({ von: cursor, bis: f.von });
+      cursor = f.bis;
+      if (cursor >= bis) break;
+    }
+    if (cursor < bis) segs.push({ von: cursor, bis });
+    return segs;
+  }
+
+  // Jede aktiv-Phase von heute bleibt als Balken stehen, auch nach Pausieren
+  // oder Erledigen. Wird ein Task wieder aktiv, kommt ein neuer Balken dazu.
+  const balken: Balken[] = [];
+  for (const t of [...aktive, ...geplante, ...erledigte]) {
+    t.aktiv_phasen.forEach((phase, i) => {
+      const vonMin = Math.max(0, minAbHeute(new Date(phase.von)));
+      if (vonMin >= TAG_ENDE) return;
+      if (phase.bis === null) {
+        // Läuft noch: Balken über die geplante Dauer, Blocker schieben das Ende.
+        const { segs, ende } = freieSegmente(vonMin, effektiveDauer(t));
+        const basisEnde =
+          resizeDauer?.id === t.id ? freieSegmente(vonMin, t.dauer_minuten).ende : ende;
+        balken.push({
+          task: t, segs, art: "laeuft", ueberzogen: ende <= jetztMin,
+          ende, basisEnde, ebene: 0, key: `t${t.id}-${i}`,
+        });
+      } else {
+        const bisMin = Math.min(TAG_ENDE, minAbHeute(new Date(phase.bis)));
+        if (bisMin <= 0) return; // Phase von gestern oder früher
+        const segs = zerschneide(vonMin, Math.max(bisMin, vonMin + 2));
+        if (segs.length === 0) return; // lag komplett in einem Blocker
+        balken.push({
+          task: t, segs, art: "vergangen", ueberzogen: false,
+          ende: bisMin, basisEnde: bisMin, ebene: 0, key: `t${t.id}-${i}`,
+        });
+      }
+    });
+  }
+  // Ebenen-Zuordnung: überlappende Balken rutschen eine Ebene tiefer.
+  balken.sort(
+    (a, b) => a.segs[0].von - b.segs[0].von || a.segs[a.segs.length - 1].bis - b.segs[b.segs.length - 1].bis,
+  );
+  const ebenenEnden: number[] = [];
+  for (const b of balken) {
+    let ebene = ebenenEnden.findIndex((ende) => ende <= b.segs[0].von);
+    if (ebene < 0) {
+      ebene = ebenenEnden.length;
+      ebenenEnden.push(0);
+    }
+    b.ebene = ebene;
+    ebenenEnden[ebene] = b.segs[b.segs.length - 1].bis;
+  }
+
+  // Warteliste: alle Queue-Tasks nacheinander in genau einer Ebene, hinter
+  // jetzt, hinter den laufenden Tasks und hinter allen Blockern.
+  let cursor = Math.max(
+    jetztMin,
+    ...balken.filter((b) => b.art === "laeuft").map((b) => b.ende),
+  );
+  const geplant: { task: Task; segs: Seg[] }[] = [];
+  for (const t of geplante) {
+    if (cursor >= TAG_ENDE) break; // Rest liegt hinter Mitternacht, heute unsichtbar
+    const { segs, ende } = freieSegmente(cursor, effektiveDauer(t));
+    geplant.push({ task: t, segs });
+    cursor = ende;
+  }
+  const geplantEbene = ebenenEnden.length;
+  const achseHoehe = Math.max(
+    92,
+    EBENE_TOP + (ebenenEnden.length + (geplant.length ? 1 : 0)) * EBENE_HOEHE + 2,
+  );
 
   // Auto-Fenster: feste Zeiten aus dem Arbeitszeit-Modell, im Stunden-Modus 07 bis 16 Uhr.
-  // Blöcke und laufende Tasks außerhalb weiten das Fenster, damit nichts unsichtbar bleibt.
+  // Blöcke und Task-Balken außerhalb weiten das Fenster, damit nichts unsichtbar bleibt.
   let autoStart = 7 * 60;
   let autoEnde = 16 * 60;
   if (kapazitaet.fenster_von && kapazitaet.fenster_bis) {
@@ -77,10 +247,12 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
     autoStart = Math.min(autoStart, minuten(block.start));
     autoEnde = Math.max(autoEnde, minuten(block.ende));
   }
-  for (const { startMin } of laufende) {
-    if (startMin > 0) autoStart = Math.min(autoStart, startMin);
-    autoEnde = Math.max(autoEnde, jetztMin);
+  for (const b of balken) {
+    if (b.segs[0].von > 0) autoStart = Math.min(autoStart, b.segs[0].von);
+    autoEnde = Math.max(autoEnde, Math.min(b.basisEnde, TAG_ENDE), jetztMin);
   }
+  // Geplante starten frühestens jetzt, also mindestens bis dahin zeigen.
+  if (geplant.length > 0) autoEnde = Math.max(autoEnde, jetztMin);
   autoStart = Math.floor(autoStart / 60) * 60;
   autoEnde = Math.ceil(autoEnde / 60) * 60;
   const spanne = autoEnde - autoStart;
@@ -132,6 +304,64 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
     }
   }
 
+  function resizeStart(e: React.PointerEvent<HTMLSpanElement>, task: Task) {
+    e.stopPropagation(); // sonst startet das Achsen-Verschieben
+    e.preventDefault();
+    const breite = achseRef.current?.clientWidth || 1;
+    resize.current = {
+      id: task.id,
+      x: e.clientX,
+      dauer0: task.dauer_minuten,
+      dauer: task.dauer_minuten,
+      minProPx: spanne / breite,
+      bewegt: false,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setResizeDauer({ id: task.id, dauer: task.dauer_minuten });
+  }
+
+  function resizeMove(e: React.PointerEvent<HTMLSpanElement>) {
+    const r = resize.current;
+    if (!r) return;
+    const roh = r.dauer0 + (e.clientX - r.x) * r.minProPx;
+    const neu = Math.min(Math.max(Math.round(roh / 5) * 5, 15), 24 * 60);
+    if (neu !== r.dauer) {
+      r.dauer = neu;
+      r.bewegt = true;
+      setResizeDauer({ id: r.id, dauer: neu });
+    }
+  }
+
+  async function resizeEnde() {
+    const r = resize.current;
+    resize.current = null;
+    if (!r) return;
+    if (r.bewegt) {
+      // Der Klick direkt nach dem Loslassen soll nicht das Modal öffnen.
+      klickSperre.current = true;
+      setTimeout(() => (klickSperre.current = false), 0);
+    }
+    if (r.dauer !== r.dauer0) {
+      await api.taskAendern(r.id, { dauer_minuten: r.dauer });
+      onChange(); // resizeDauer räumt der useEffect auf, sobald die Props nachziehen
+    } else {
+      setResizeDauer(null);
+    }
+  }
+
+  function resizeGriff(task: Task) {
+    return (
+      <span
+        className="resize-griff"
+        title="Ziehen um die Dauer zu ändern"
+        onPointerDown={(e) => resizeStart(e, task)}
+        onPointerMove={resizeMove}
+        onPointerUp={resizeEnde}
+        onPointerCancel={resizeEnde}
+      />
+    );
+  }
+
   async function spontanBlocker() {
     // Ein Klick: Blocker ab jetzt für 30 Minuten. Details danach anpassbar.
     const von = jetztZeit();
@@ -181,7 +411,9 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
   return (
     <div className="tagesleiste">
       <div
+        ref={achseRef}
         className="achse"
+        style={{ height: achseHoehe }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}
@@ -214,22 +446,50 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
             </button>
           );
         })}
-        {laufende.map(({ task, startMin }) => {
-          const pos = position(startMin, Math.max(jetztMin, startMin + 4));
-          if (!pos) return null;
-          return (
-            <button
-              key={`task-${task.id}`}
-              type="button"
-              className="block task"
-              style={pos}
-              title={`${task.titel} – läuft seit ${startMin === 0 ? "gestern oder früher" : alsZeit(task.aktiv_seit!)}`}
-              onClick={() => onTaskClick(task)}
-            >
-              {task.titel}
-            </button>
-          );
-        })}
+        {balken.map((b) =>
+          b.segs.map((seg, i) => {
+            const pos = position(seg.von, Math.min(seg.bis, TAG_ENDE));
+            if (!pos) return null;
+            const info =
+              b.art === "laeuft"
+                ? `läuft seit ${alsUhr(b.segs[0].von)}, geplant ${dauerText(effektiveDauer(b.task))}`
+                : `war aktiv ${alsUhr(b.segs[0].von)}–${alsUhr(b.ende)}`;
+            return (
+              <button
+                key={`${b.key}-${i}`}
+                type="button"
+                className={`block task ${b.art === "vergangen" ? "vergangen" : ""} ${
+                  b.ueberzogen ? "ueberzogen" : ""
+                }`}
+                style={{ ...pos, top: EBENE_TOP + b.ebene * EBENE_HOEHE }}
+                title={`${b.task.titel} – ${info}`}
+                onClick={() => !klickSperre.current && onTaskClick(b.task)}
+              >
+                {b.task.titel}
+                {b.art === "laeuft" && i === b.segs.length - 1 && resizeGriff(b.task)}
+              </button>
+            );
+          }),
+        )}
+        {geplant.map(({ task, segs }) =>
+          segs.map((seg, i) => {
+            const pos = position(seg.von, Math.min(seg.bis, TAG_ENDE));
+            if (!pos) return null;
+            return (
+              <button
+                key={`g${task.id}-${i}`}
+                type="button"
+                className="block task geplant"
+                style={{ ...pos, top: EBENE_TOP + geplantEbene * EBENE_HOEHE }}
+                title={`${task.titel} – geplant ab ${alsUhr(segs[0].von)}, ${dauerText(effektiveDauer(task))}`}
+                onClick={() => !klickSperre.current && onTaskClick(task)}
+              >
+                {task.titel}
+                {i === segs.length - 1 && resizeGriff(task)}
+              </button>
+            );
+          }),
+        )}
         {jetztMin >= viewStart && jetztMin <= viewEnde && (
           <div className="jetzt" style={{ left: `${((jetztMin - viewStart) / spanne) * 100}%` }} />
         )}
@@ -268,46 +528,72 @@ export function Tagesleiste({ kapazitaet, aktive, onChange, onTaskClick }: {
         </span>
       </div>
       {form && (
-        <form onSubmit={speichern} className="block-form">
-          <input
-            value={form.titel}
-            onChange={(e) => setForm({ ...form, titel: e.target.value })}
-            placeholder="Titel"
-          />
-          <select
-            value={form.typ}
-            onChange={(e) => setForm({ ...form, typ: e.target.value as "meeting" | "blocker" })}
-          >
-            <option value="meeting">Meeting</option>
-            <option value="blocker">Blocker</option>
-          </select>
-          <input
-            type="time"
-            value={form.von}
-            onChange={(e) => setForm({ ...form, von: e.target.value })}
-          />
-          <input
-            type="time"
-            value={form.bis}
-            onChange={(e) => setForm({ ...form, bis: e.target.value })}
-          />
-          {form.id !== null && (
-            <button
-              type="button"
-              className="sekundaer"
-              title="Endzeit auf jetzt setzen"
-              onClick={() => setForm({ ...form, bis: jetztZeit() })}
-            >
-              Bis jetzt
-            </button>
-          )}
-          <button type="submit">{form.id === null ? "Eintragen" : "Speichern"}</button>
-          {form.id !== null && (
-            <button type="button" className="sekundaer" onClick={loeschen}>
-              Löschen
-            </button>
-          )}
-        </form>
+        <div className="modal-hintergrund" onClick={() => setForm(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <form onSubmit={speichern}>
+              <label>
+                Titel
+                <input
+                  value={form.titel}
+                  onChange={(e) => setForm({ ...form, titel: e.target.value })}
+                  placeholder="Titel"
+                />
+              </label>
+              <label>
+                Typ
+                <select
+                  value={form.typ}
+                  onChange={(e) => setForm({ ...form, typ: e.target.value as BlockTyp })}
+                >
+                  {BLOCK_TYPEN.map((typ) => (
+                    <option key={typ} value={typ}>
+                      {BLOCK_NAMEN[typ]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="zeit-zeile">
+                <label>
+                  Von
+                  <input
+                    type="time"
+                    value={form.von}
+                    onChange={(e) => setForm({ ...form, von: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Bis
+                  <input
+                    type="time"
+                    value={form.bis}
+                    onChange={(e) => setForm({ ...form, bis: e.target.value })}
+                  />
+                </label>
+                {form.id !== null && (
+                  <button
+                    type="button"
+                    className="sekundaer"
+                    title="Endzeit auf jetzt setzen"
+                    onClick={() => setForm({ ...form, bis: jetztZeit() })}
+                  >
+                    Bis jetzt
+                  </button>
+                )}
+              </div>
+              <div className="modal-aktionen">
+                {form.id !== null && (
+                  <button type="button" className="sekundaer" onClick={loeschen}>
+                    Löschen
+                  </button>
+                )}
+                <button type="button" className="sekundaer" onClick={() => setForm(null)}>
+                  Abbrechen
+                </button>
+                <button type="submit">{form.id === null ? "Eintragen" : "Speichern"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

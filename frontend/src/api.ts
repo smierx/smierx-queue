@@ -37,8 +37,13 @@ export const api = {
   wiederOeffnen: (id: number) => request<Task>(`/tasks/${id}/erledigt`, { method: "DELETE" }),
   taskAnlegen: (titel: string) =>
     request<Task>("/tasks", { method: "POST", body: JSON.stringify({ titel }) }),
-  taskAendern: (id: number, daten: { titel?: string; beschreibung?: string }) =>
+  taskAendern: (id: number, daten: { titel?: string; beschreibung?: string; dauer_minuten?: number }) =>
     request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(daten) }),
+  // Automatischer Statuswechsel: aktiviert ggf. den nächsten Queue-Task und
+  // liefert die offene Task-Liste zurück.
+  queueTick: () => request<Task[]>("/queue/tick", { method: "POST" }),
+  // Feierabend: alle aktiven Tasks wandern auf next, der Tick bleibt danach still.
+  feierabend: () => request<Task[]>("/queue/feierabend", { method: "POST" }),
   taskLoeschen: (id: number) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
   historie: (id: number) => request<TagEvent[]>(`/tasks/${id}/historie`),
   tagSetzen: (id: number, tag: Tag) => request<Task>(`/tasks/${id}/tags/${tag}`, { method: "PUT" }),

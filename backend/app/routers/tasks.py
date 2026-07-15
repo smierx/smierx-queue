@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -9,12 +9,14 @@ from app.auth import aktueller_user
 from app.database import get_db
 from app.models import (
     VALID_TAGS,
+    ZUSTAND_TAGS,
     GitlabConnection,
     GitlabLink,
     SyncLog,
     TagEvent,
     Task,
     TaskTag,
+    TimeBlock,
 )
 from app.schemas import QueueOrder, TagEventOut, TaskCreate, TaskOut, TaskUpdate
 
@@ -71,6 +73,17 @@ def _tag_pruefen(tag: str) -> str:
     return tag
 
 
+def _tag_anwenden(task: Task, tag: str) -> None:
+    """Tag setzen inkl. Historie. Zustand-Tags verdrängen sich gegenseitig."""
+    if tag in ZUSTAND_TAGS:
+        for zeile in [z for z in task.tag_zeilen if z.tag in ZUSTAND_TAGS and z.tag != tag]:
+            task.tag_zeilen.remove(zeile)
+            task.historie.append(TagEvent(tag=zeile.tag, aktion="entfernt"))
+    if tag not in task.tags:
+        task.tag_zeilen.append(TaskTag(tag=tag))
+        task.historie.append(TagEvent(tag=tag, aktion="gesetzt"))
+
+
 @router.get("/tasks", response_model=list[TaskOut])
 def tasks_auflisten(
     tag: str | None = None,
@@ -101,6 +114,7 @@ def task_anlegen(
         titel=daten.titel,
         beschreibung=daten.beschreibung,
         position=(max_position or 0) + 1,
+        dauer_minuten=daten.dauer_minuten,
     )
     task.tag_zeilen = [TaskTag(tag=t) for t in daten.tags]
     task.historie = [TagEvent(tag=t, aktion="gesetzt") for t in daten.tags]
@@ -129,6 +143,8 @@ def task_aendern(
         task.titel = daten.titel
     if daten.beschreibung is not None:
         task.beschreibung = daten.beschreibung
+    if daten.dauer_minuten is not None:
+        task.dauer_minuten = daten.dauer_minuten
     db.commit()
     db.refresh(task)
     return task
@@ -152,8 +168,7 @@ def tag_setzen(
     task = _task_holen(db, task_id, user)
     _tag_pruefen(tag)
     if tag not in task.tags:
-        task.tag_zeilen.append(TaskTag(tag=tag))
-        task.historie.append(TagEvent(tag=tag, aktion="gesetzt"))
+        _tag_anwenden(task, tag)
         db.commit()
         db.refresh(task)
     return task
@@ -211,6 +226,101 @@ def historie_lesen(
     task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
 ) -> list[TagEvent]:
     return _task_holen(db, task_id, user).historie
+
+
+# Geparkte Tasks überspringt der automatische Statuswechsel.
+GEPARKT = {"pausiert", "holding", "inaktiv"}
+
+
+def _fenster_zusammenfassen(bloecke: list[TimeBlock]) -> list[tuple[datetime, datetime]]:
+    """Blocker/Meetings als sortierte, überlappungsfreie Zeitfenster."""
+    fenster: list[tuple[datetime, datetime]] = []
+    for start, ende in sorted((b.start, b.ende) for b in bloecke):
+        if fenster and start <= fenster[-1][1]:
+            fenster[-1] = (fenster[-1][0], max(fenster[-1][1], ende))
+        else:
+            fenster.append((start, ende))
+    return fenster
+
+
+def _geplantes_ende(
+    start: datetime, dauer_minuten: int, fenster: list[tuple[datetime, datetime]]
+) -> datetime:
+    """Geplantes Ende eines Tasks: Dauer ab Start, Blocker-Fenster zählen nicht
+    als Arbeitszeit und schieben das Ende nach hinten."""
+    cursor = start
+    rest = timedelta(minutes=dauer_minuten)
+    for von, bis in fenster:
+        if bis <= cursor:
+            continue
+        frei = von - cursor
+        if frei >= rest:
+            return cursor + rest
+        if frei > timedelta(0):
+            rest -= frei
+        cursor = bis
+    return cursor + rest
+
+
+@router.post("/queue/tick", response_model=list[TaskOut])
+def queue_tick(
+    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
+) -> list[Task]:
+    """Automatischer Statuswechsel als Übergabe: sind Tasks aktiv, aber keiner mehr
+    in seiner geplanten Zeit (aktiv seit + Dauer, Blocker schieben das Ende nach
+    hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
+    Feierabend), bleibt der Tick still. Mitten in einem Blocker passiert nichts.
+    Pro Tick höchstens ein Wechsel, geparkte Tasks (pausiert, holding, inaktiv)
+    bleiben liegen. Gibt die offene Task-Liste zurück, wie GET /tasks."""
+    tasks = list(
+        db.scalars(
+            select(Task)
+            .where(Task.user_id == user, Task.erledigt_am.is_(None))
+            .order_by(Task.position)
+        )
+    )
+    jetzt = datetime.now()  # lokale Zeit, konsistent zu aktiv_seit und TimeBlocks
+    fenster = _fenster_zusammenfassen(
+        list(db.scalars(select(TimeBlock).where(TimeBlock.user_id == user)))
+    )
+    im_blocker = any(von <= jetzt < bis for von, bis in fenster)
+    aktive = [t for t in tasks if "aktiv" in t.tags]
+    laeuft_noch = any(
+        t.aktiv_seit is not None
+        and _geplantes_ende(t.aktiv_seit, t.dauer_minuten, fenster) > jetzt
+        for t in aktive
+    )
+    if aktive and not laeuft_noch and not im_blocker:
+        wartende = sorted(
+            (t for t in tasks if "aktiv" not in t.tags and not GEPARKT & set(t.tags)),
+            key=lambda t: (0 if "next" in t.tags else 1, t.position),
+        )
+        if wartende:
+            naechster = wartende[0]
+            _tag_anwenden(naechster, "aktiv")
+            db.commit()
+            logger.info("Auto-aktiviert: Task %s (%s)", naechster.id, naechster.titel)
+    return tasks
+
+
+@router.post("/queue/feierabend", response_model=list[TaskOut])
+def feierabend(
+    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
+) -> list[Task]:
+    """Feierabend: alle aktiven Tasks wandern auf next, ihre aktiv-Phasen enden.
+    Der automatische Statuswechsel bleibt danach still, bis wieder etwas aktiv ist."""
+    tasks = list(
+        db.scalars(
+            select(Task)
+            .where(Task.user_id == user, Task.erledigt_am.is_(None))
+            .order_by(Task.position)
+        )
+    )
+    for task in tasks:
+        if "aktiv" in task.tags:
+            _tag_anwenden(task, "next")
+    db.commit()
+    return tasks
 
 
 @router.put("/queue/order", response_model=list[TaskOut])

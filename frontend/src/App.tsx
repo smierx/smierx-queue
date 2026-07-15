@@ -42,24 +42,28 @@ export default function App() {
 
   const laden = useCallback(async () => {
     try {
-      const [t, k] = await Promise.all([api.tasks(), api.kapazitaet()]);
+      // Der Tick übernimmt den automatischen Statuswechsel und liefert die Liste.
+      // Erledigte braucht der Zeitstrahl immer: ihre aktiv-Phasen bleiben stehen.
+      const [t, k, e] = await Promise.all([
+        api.queueTick(),
+        api.kapazitaet(),
+        api.tasksErledigt(),
+      ]);
       setTasks(t);
       setKapazitaet(k);
+      setErledigte(e);
       setFehler(null);
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
-  const archivLaden = useCallback(() => api.tasksErledigt().then(setErledigte), []);
-
   useEffect(() => {
     laden();
+    // Polling hält Jetzt-Linie und automatischen Statuswechsel am Laufen.
+    const timer = setInterval(laden, 30_000);
+    return () => clearInterval(timer);
   }, [laden]);
-
-  useEffect(() => {
-    if (archivOffen) archivLaden();
-  }, [archivOffen, archivLaden]);
 
   async function anlegen(event: React.FormEvent) {
     event.preventDefault();
@@ -78,7 +82,6 @@ export default function App() {
   async function erledigen(task: Task) {
     await api.erledigen(task.id);
     laden();
-    if (archivOffen) archivLaden();
   }
 
   const aktive = tasks.filter((t) => t.tags.includes("aktiv"));
@@ -126,6 +129,8 @@ export default function App() {
           <Tagesleiste
             kapazitaet={kapazitaet}
             aktive={aktive}
+            geplante={queue}
+            erledigte={erledigte}
             onChange={laden}
             onTaskClick={setDetail}
           />
@@ -135,7 +140,19 @@ export default function App() {
       <SchedulePanel onChange={laden} />
 
       <section>
-        <h2>Läuft gerade</h2>
+        <h2>
+          Läuft gerade
+          {aktive.length > 0 && (
+            <button
+              type="button"
+              className="sekundaer h2-aktion"
+              title="Alle aktiven Tasks auf next setzen"
+              onClick={() => api.feierabend().then(laden)}
+            >
+              🌙 Feierabend
+            </button>
+          )}
+        </h2>
         {aktive.length === 0 && <p className="leer">Nichts aktiv. Zieh dir was aus der Queue.</p>}
         {aktive.map((task) => (
           <article
@@ -220,12 +237,7 @@ export default function App() {
                 <button
                   type="button"
                   className="sekundaer"
-                  onClick={() =>
-                    api.wiederOeffnen(task.id).then(() => {
-                      laden();
-                      archivLaden();
-                    })
-                  }
+                  onClick={() => api.wiederOeffnen(task.id).then(laden)}
                 >
                   Wieder öffnen
                 </button>
@@ -233,7 +245,7 @@ export default function App() {
                   type="button"
                   className="loeschen"
                   aria-label="endgültig löschen"
-                  onClick={() => api.taskLoeschen(task.id).then(archivLaden)}
+                  onClick={() => api.taskLoeschen(task.id).then(laden)}
                 >
                   ✕
                 </button>

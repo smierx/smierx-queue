@@ -12,6 +12,11 @@ def test_block_anlegen(client):
     assert block["typ"] == "meeting"
 
 
+def test_support_ist_blocker_typ(client):
+    block = _block(client, "Ticket-Schicht", typ="support")
+    assert block["typ"] == "support"
+
+
 def test_ungueltiger_typ_und_zeitraum(client):
     r = client.post(
         "/api/timeblocks",

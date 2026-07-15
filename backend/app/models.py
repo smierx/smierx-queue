@@ -27,13 +27,25 @@ VALID_TAGS = {
     "pausiert",
     "holding",
     "next",
-    "support",
     "discussion",
     "critical",
 }
 
-TIMEBLOCK_TYPEN = {"meeting", "blocker"}
+# Zustand-Tags schließen sich gegenseitig aus: einen setzen wirft die anderen runter.
+# Marker (discussion, critical) sind frei kombinierbar.
+ZUSTAND_TAGS = {"aktiv", "next", "pausiert", "holding", "inaktiv"}
+
+# Support ist bewusst ein Blocker-Typ und kein Task-Tag: Support-Zeit blockt den Tag.
+TIMEBLOCK_TYPEN = {"meeting", "blocker", "support"}
 SCHEDULE_MODI = {"stunden", "feste_zeiten"}
+
+
+def _lokal(zeitpunkt: datetime) -> datetime:
+    """DB-Defaults sind UTC (SQLite naiv, Postgres aware) → lokale, naive Zeit,
+    konsistent zu den TimeBlocks."""
+    if zeitpunkt.tzinfo is None:
+        zeitpunkt = zeitpunkt.replace(tzinfo=timezone.utc)
+    return zeitpunkt.astimezone().replace(tzinfo=None)
 
 
 class Task(Base):
@@ -46,6 +58,8 @@ class Task(Base):
     beschreibung: Mapped[str] = mapped_column(Text, default="")
     # Queue-Reihenfolge pro User, klein = weiter oben. Reorder schreibt die Positionen neu.
     position: Mapped[int] = mapped_column(Integer, index=True)
+    # Geplante Dauer in Minuten, Default eine Stunde. Bestimmt die Balkenbreite im Zeitstrahl.
+    dauer_minuten: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     # Gesetzt = Task ist erledigt und raus aus der Queue, bleibt aber als Archiv erhalten.
     erledigt_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     erstellt_am: Mapped[datetime] = mapped_column(
@@ -67,18 +81,33 @@ class Task(Base):
         return sorted(zeile.tag for zeile in self.tag_zeilen)
 
     @property
+    def aktiv_phasen(self) -> list[dict]:
+        """Alle aktiv-Phasen aus der Tag-Historie, lokale Zeit: [{von, bis}].
+        bis=None heißt läuft noch. Erledigt beendet die offene Phase mit erledigt_am.
+        Der Zeitstrahl zeichnet jede Phase als eigenen Balken."""
+        phasen: list[dict] = []
+        von: datetime | None = None
+        for event in self.historie:
+            if event.tag != "aktiv":
+                continue
+            if event.aktion == "gesetzt" and von is None:
+                von = _lokal(event.zeitpunkt)
+            elif event.aktion == "entfernt" and von is not None:
+                phasen.append({"von": von, "bis": _lokal(event.zeitpunkt)})
+                von = None
+        if von is not None:
+            bis = _lokal(self.erledigt_am) if self.erledigt_am is not None else None
+            phasen.append({"von": von, "bis": bis})
+        return phasen
+
+    @property
     def aktiv_seit(self) -> datetime | None:
         """Wann das aktuelle `aktiv`-Tag gesetzt wurde, als lokale Zeit (für die Tagesleiste)."""
         if "aktiv" not in self.tags:
             return None
-        for event in reversed(self.historie):
-            if event.tag == "aktiv" and event.aktion == "gesetzt":
-                zeitpunkt = event.zeitpunkt
-                # DB-Defaults sind UTC (SQLite naiv, Postgres aware) → lokale, naive Zeit,
-                # konsistent zu den TimeBlocks.
-                if zeitpunkt.tzinfo is None:
-                    zeitpunkt = zeitpunkt.replace(tzinfo=timezone.utc)
-                return zeitpunkt.astimezone().replace(tzinfo=None)
+        phasen = self.aktiv_phasen
+        if phasen and phasen[-1]["bis"] is None:
+            return phasen[-1]["von"]
         return None
 
 
