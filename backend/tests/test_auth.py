@@ -24,15 +24,17 @@ def oidc(monkeypatch):
     monkeypatch.setattr(auth, "_jwks_client", lambda: FakeJWKS())
 
 
-def _token(sub: str, issuer: str = ISSUER) -> str:
+def _token(username: str | None, issuer: str = ISSUER) -> str:
     import time
 
-    claims = {"sub": sub, "iss": issuer, "exp": int(time.time()) + 300}
+    claims = {"sub": "egal-uuid", "iss": issuer, "exp": int(time.time()) + 300}
+    if username is not None:
+        claims["preferred_username"] = username
     return jwt.encode(claims, _privat, algorithm="RS256")
 
 
-def _auth(sub: str) -> dict:
-    return {"Authorization": f"Bearer {_token(sub)}"}
+def _auth(username: str) -> dict:
+    return {"Authorization": f"Bearer {_token(username)}"}
 
 
 def test_ohne_token_401(client, oidc):
@@ -46,6 +48,12 @@ def test_kaputtes_token_401(client, oidc):
 
 def test_falscher_issuer_401(client, oidc):
     token = _token("user-a", issuer="https://boese.test/realms/x")
+    r = client.get("/api/tasks", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
+
+
+def test_token_ohne_username_401(client, oidc):
+    token = _token(None)
     r = client.get("/api/tasks", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 401
 

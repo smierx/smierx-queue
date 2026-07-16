@@ -14,7 +14,11 @@ def _jwks_client() -> PyJWKClient:
 
 
 def aktueller_user(request: Request) -> str:
-    """Liefert die User-Id (Keycloak `sub`). Ohne konfiguriertes OIDC: Dev-Modus."""
+    """Liefert die User-Id (Keycloak `preferred_username`). Ohne konfiguriertes OIDC: Dev-Modus.
+
+    Bewusst der Username statt `sub`: Daten überleben so einen Realm-Neubau.
+    Kehrseite: wird ein Username im Realm neu vergeben, erbt die Person die Daten.
+    """
     if not settings.oidc_issuer:
         return "dev"
 
@@ -35,4 +39,7 @@ def aktueller_user(request: Request) -> str:
         )
     except jwt.PyJWTError as fehler:
         raise HTTPException(401, f"Token ungültig: {fehler}") from None
-    return claims["sub"]
+    username = claims.get("preferred_username")
+    if not username:
+        raise HTTPException(401, "preferred_username fehlt im Token")
+    return username
