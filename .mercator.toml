@@ -1,0 +1,37 @@
+[review]
+base = "main"
+# Monorepo: eine Root-Config, die Checks wechseln selbst ins Verzeichnis.
+# Spiegel der CI (backend: ruff + pytest, frontend: tsc -b + vite build).
+checks = [
+  "cd backend && uv run ruff check .",
+  "cd backend && uv run pytest -q",
+  "cd frontend && npm run build",
+]
+
+# Optionale Extra-Checks – in die checks-Liste oben ziehen,
+# wenn im Projekt eingerichtet (Qualität, Security, Performance, E2E):
+#   python:
+#     pytest --cov=app --cov-fail-under=80   # Coverage-Gate (statt pytest -q)
+#     bandit -r app                          # Security-SAST
+#     pip-audit                              # Dependency-CVEs
+#     pytest --benchmark-only                # Performance-Benchmarks (pytest-benchmark)
+#   react:
+#     vitest run                     # Unit-Tests
+#     npx playwright test            # E2E im Browser (Playwright)
+#     npm audit --audit-level=high   # Dependency-CVEs
+#     npx size-limit                 # Bundle-Size-Budget (Performance)
+#     lhci autorun                   # Lighthouse-Budgets (Performance)
+
+# Performance messen (mercator review perf → Baseline in .mercator/,
+# kein Gate). Zum Aktivieren einkommentieren:
+# [perf]
+# benchmarks = [
+#   "pytest --benchmark-only",
+#   "npx size-limit",
+# ]
+
+# API-Contract-Lint (Spectral via npx, kein Install). setup --contract
+# legt .spectral.yaml an. Modulpfad zur FastAPI-App ggf. anpassen.
+# In die checks-Liste ziehen:
+#   python -c "import json; from app.main import app; open('.mercator/openapi.json','w').write(json.dumps(app.openapi()))"
+#   npx --yes @stoplight/spectral-cli lint .mercator/openapi.json
