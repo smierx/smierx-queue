@@ -2,7 +2,9 @@
 
 Taskmanagement als Queue-System. Tasks tragen Status als Tags (aktiv, inaktiv, pausiert, holding, next, support, discussion, critical), mehrere Tasks können gleichzeitig laufen. Daneben Meetings und andere Blocker mit fixen Zeiträumen plus ein Arbeitszeit-Modell pro Person, daraus rechnet die App die freie Tageskapazität.
 
-Stack: FastAPI + Postgres (backend/), React + Vite (frontend/), Auth über Keycloak (ab Phase 4), optionaler bidirektionaler GitLab-Sync (Phase 5).
+Stack: FastAPI + Postgres (backend/), React + Vite (frontend/), Auth über Keycloak (optional), optionaler bidirektionaler GitLab-Sync.
+
+Doku: [Nutzung](docs/Nutzung.md) (Bedienung, Queue-Mechanik, Export, Sync) und [Entwicklung](docs/Entwicklung.md) (Architektur, Konventionen, Deployment).
 
 ## Entwicklung
 

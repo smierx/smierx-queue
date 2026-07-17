@@ -52,7 +52,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Keycloak-`sub`, im Dev-Modus "dev". Jeder sieht nur seine Zeilen.
+    # Keycloak-`preferred_username`, im Dev-Modus "dev". Jeder sieht nur seine Zeilen.
     user_id: Mapped[str] = mapped_column(String(100), index=True, default="dev")
     titel: Mapped[str] = mapped_column(String(300))
     beschreibung: Mapped[str] = mapped_column(Text, default="")
