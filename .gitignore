@@ -4,6 +4,7 @@ __pycache__/
 .env*
 !.env.prod.example
 !.env.home.example
+!.env.noauth.example
 node_modules/
 dist/
 .DS_Store

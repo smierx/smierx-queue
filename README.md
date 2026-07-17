@@ -61,3 +61,12 @@ Ein Image für alles: Multi-Stage-`Dockerfile` im Root baut das Frontend und lie
 cp .env.prod.example .env.prod   # ausfüllen
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
+
+## Deploy ohne Keycloak (Single-User)
+
+Für den Betrieb ohne Identity Provider: die API läuft im Dev-Modus (ein User `dev`), das Frontend startet ohne Login. Eigener Postgres-Container, der App-Port bindet per Default nur auf 127.0.0.1, weil ohne Login allein die Erreichbarkeit schützt:
+
+```sh
+cp .env.noauth.example .env.noauth   # ausfüllen
+docker compose -f docker-compose.noauth.yml --env-file .env.noauth up -d
+```
