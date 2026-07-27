@@ -11,6 +11,7 @@ from app.models import (
     ZUSTAND_TAGS,
     TagEvent,
     Task,
+    TaskPhase,
     TaskTag,
     TimeBlock,
 )
@@ -37,15 +38,27 @@ def _tag_pruefen(tag: str) -> str:
     return tag
 
 
+def _offene_phase_schliessen(task: Task, zeitpunkt: datetime) -> None:
+    for phase in task.phasen:
+        if phase.bis is None:
+            phase.bis = zeitpunkt
+
+
 def _tag_anwenden(task: Task, tag: str) -> None:
-    """Tag setzen inkl. Historie. Zustand-Tags verdrängen sich gegenseitig."""
+    """Tag setzen inkl. Historie. Zustand-Tags verdrängen sich gegenseitig.
+    Führt die Phasen mit: aktiv setzen öffnet eine, aktiv verlieren schließt sie."""
+    jetzt = datetime.now()  # lokale Zeit, Konvention der TaskPhase-Spalten
     if tag in ZUSTAND_TAGS:
         for zeile in [z for z in task.tag_zeilen if z.tag in ZUSTAND_TAGS and z.tag != tag]:
             task.tag_zeilen.remove(zeile)
             task.historie.append(TagEvent(tag=zeile.tag, aktion="entfernt"))
+            if zeile.tag == "aktiv":
+                _offene_phase_schliessen(task, jetzt)
     if tag not in task.tags:
         task.tag_zeilen.append(TaskTag(tag=tag))
         task.historie.append(TagEvent(tag=tag, aktion="gesetzt"))
+        if tag == "aktiv":
+            task.phasen.append(TaskPhase(von=jetzt))
 
 
 @router.get("/tasks", response_model=list[TaskOut])
@@ -79,6 +92,8 @@ def task_anlegen(
     )
     task.tag_zeilen = [TaskTag(tag=t) for t in daten.tags]
     task.historie = [TagEvent(tag=t, aktion="gesetzt") for t in daten.tags]
+    if "aktiv" in daten.tags:
+        task.phasen = [TaskPhase(von=datetime.now())]
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -141,6 +156,8 @@ def tag_entfernen(
     if zeile is not None:
         task.tag_zeilen.remove(zeile)
         task.historie.append(TagEvent(tag=tag, aktion="entfernt"))
+        if tag == "aktiv":
+            _offene_phase_schliessen(task, datetime.now())
         db.commit()
         db.refresh(task)
     return task
@@ -148,10 +165,16 @@ def tag_entfernen(
 
 @router.post("/tasks/{task_id}/erledigt", response_model=TaskOut)
 def task_erledigen(task_id: int, db: Session = Depends(get_db)) -> Task:
-    """Task ins Archiv statt löschen."""
+    """Task ins Archiv statt löschen. Läuft er gerade, endet die Phase
+    und das aktiv-Tag geht runter (Wiederöffnen startet ihn nicht von selbst)."""
     task = _task_holen(db, task_id)
     if task.erledigt_am is None:
         task.erledigt_am = _jetzt_utc()
+        _offene_phase_schliessen(task, datetime.now())
+        zeile = next((z for z in task.tag_zeilen if z.tag == "aktiv"), None)
+        if zeile is not None:
+            task.tag_zeilen.remove(zeile)
+            task.historie.append(TagEvent(tag="aktiv", aktion="entfernt"))
         db.commit()
         db.refresh(task)
     return task

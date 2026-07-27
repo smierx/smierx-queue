@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 
@@ -14,16 +14,13 @@ def _task(client, titel="Testtask", tags=None, dauer=None):
     return r.json()
 
 
-def _event_verschieben(task_id: int, aktion: str, minuten: int) -> None:
-    """Ein aktiv-Event um X Minuten in die Vergangenheit schieben (DB speichert UTC)."""
-    zeitpunkt = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=minuten)
+def _phase_verschieben(task_id: int, minuten: int) -> None:
+    """Den Phasen-Start um X Minuten zurückschieben (Phasen sind lokale naive Zeit)."""
+    zeitpunkt = datetime.now() - timedelta(minutes=minuten)
     with engine.begin() as conn:
         conn.execute(
-            text(
-                "UPDATE tag_events SET zeitpunkt = :z"
-                " WHERE task_id = :id AND tag = 'aktiv' AND aktion = :aktion"
-            ),
-            {"z": zeitpunkt.isoformat(sep=" "), "id": task_id, "aktion": aktion},
+            text("UPDATE task_phases SET von = :z WHERE task_id = :id"),
+            {"z": zeitpunkt.isoformat(sep=" "), "id": task_id},
         )
 
 
@@ -61,7 +58,7 @@ def test_export_phase_abzueglich_blocker(client):
     # Phase lief 60 Minuten, davon 20 in einem Meeting → 40 Minuten gearbeitet.
     task = _task(client, "Deployment", tags=["aktiv"])
     client.delete(f"/api/tasks/{task['id']}/tags/aktiv")
-    _event_verschieben(task["id"], "gesetzt", 60)
+    _phase_verschieben(task["id"], 60)
     jetzt = datetime.now()
     client.post(
         "/api/timeblocks",
@@ -85,7 +82,7 @@ def test_export_phase_abzueglich_blocker(client):
 
 def test_export_offene_phase_bis_jetzt(client):
     task = _task(client, "Läuft noch", tags=["aktiv"])
-    _event_verschieben(task["id"], "gesetzt", 30)
+    _phase_verschieben(task["id"], 30)
 
     daten = client.get("/api/export").json()
     assert len(daten["phasen"]) == 1

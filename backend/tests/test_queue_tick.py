@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
@@ -15,11 +15,12 @@ def _task(client, titel="Testtask", tags=None, dauer=None):
 
 
 def _abgelaufen(task_id: int, minuten: int = 120) -> None:
-    """Das aktiv-Event so weit zurückdatieren, dass die geplante Zeit vorbei ist."""
-    vorbei = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=minuten)
+    """Den Phasen-Start so weit zurückdatieren, dass die geplante Zeit vorbei ist
+    (Phasen-Zeiten sind lokale naive Zeit)."""
+    vorbei = datetime.now() - timedelta(minutes=minuten)
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE tag_events SET zeitpunkt = :z WHERE task_id = :id AND tag = 'aktiv'"),
+            text("UPDATE task_phases SET von = :z WHERE task_id = :id"),
             {"z": vorbei.isoformat(sep=" "), "id": task_id},
         )
 

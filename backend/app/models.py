@@ -47,6 +47,14 @@ def _lokal(zeitpunkt: datetime) -> datetime:
     return zeitpunkt.astimezone().replace(tzinfo=None)
 
 
+def _phasenzeit(zeitpunkt: datetime) -> datetime:
+    """TaskPhase-Zeiten schreibt die App Python-seitig als lokale naive Zeit.
+    Postgres gibt sie aware zurück (Session-TZ), SQLite naiv wie geschrieben."""
+    if zeitpunkt.tzinfo is None:
+        return zeitpunkt
+    return zeitpunkt.astimezone().replace(tzinfo=None)
+
+
 class Task(Base):
     __tablename__ = "tasks"
 
@@ -72,6 +80,9 @@ class Task(Base):
     historie: Mapped[list["TagEvent"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="TagEvent.id"
     )
+    phasen: Mapped[list["TaskPhase"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="TaskPhase.von"
+    )
 
     @property
     def tags(self) -> list[str]:
@@ -79,33 +90,23 @@ class Task(Base):
 
     @property
     def aktiv_phasen(self) -> list[dict]:
-        """Alle aktiv-Phasen aus der Tag-Historie, lokale Zeit: [{von, bis}].
-        bis=None heißt läuft noch. Erledigt beendet die offene Phase mit erledigt_am.
+        """Alle aktiv-Phasen als lokale Zeit: [{von, bis}]. bis=None heißt läuft noch.
         Der Zeitstrahl zeichnet jede Phase als eigenen Balken."""
-        phasen: list[dict] = []
-        von: datetime | None = None
-        for event in self.historie:
-            if event.tag != "aktiv":
-                continue
-            if event.aktion == "gesetzt" and von is None:
-                von = _lokal(event.zeitpunkt)
-            elif event.aktion == "entfernt" and von is not None:
-                phasen.append({"von": von, "bis": _lokal(event.zeitpunkt)})
-                von = None
-        if von is not None:
-            bis = _lokal(self.erledigt_am) if self.erledigt_am is not None else None
-            phasen.append({"von": von, "bis": bis})
-        return phasen
+        return [
+            {
+                "von": _phasenzeit(p.von),
+                "bis": _phasenzeit(p.bis) if p.bis is not None else None,
+            }
+            for p in self.phasen
+        ]
 
     @property
     def aktiv_seit(self) -> datetime | None:
         """Wann das aktuelle `aktiv`-Tag gesetzt wurde, als lokale Zeit (für die Tagesleiste)."""
         if "aktiv" not in self.tags:
             return None
-        phasen = self.aktiv_phasen
-        if phasen and phasen[-1]["bis"] is None:
-            return phasen[-1]["von"]
-        return None
+        offene = [p for p in self.phasen if p.bis is None]
+        return _phasenzeit(offene[-1].von) if offene else None
 
 
 class TaskTag(Base):
@@ -115,6 +116,21 @@ class TaskTag(Base):
         ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
     )
     tag: Mapped[str] = mapped_column(String(50), primary_key=True)
+
+
+class TaskPhase(Base):
+    """Eine aktiv-Phase: von wann bis wann ein Task lief. bis=NULL heißt läuft noch.
+
+    Die Tag-Logik schreibt Phasen direkt (aktiv setzen öffnet, entfernen schließt),
+    fürs Nachtragen sind sie per CRUD editierbar. Invariante: ein Task hat genau
+    dann eine offene Phase, wenn er das aktiv-Tag trägt."""
+
+    __tablename__ = "task_phases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    von: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    bis: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TagEvent(Base):
