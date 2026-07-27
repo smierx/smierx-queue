@@ -2,6 +2,14 @@
 
 Die Queue ist ein Taskmanagement-System mit einem Versprechen: **Durchsatz vorne, nicht Vollständigkeit hinten**. Du arbeitest am Kopf der Queue, die App rückt automatisch nach. Was hinten geparkt liegt, darf liegen.
 
+## Bereiche: Arbeit und Privat
+
+Der Schalter oben im Header wechselt zwischen zwei kompletten Welten: **Arbeit** und **Privat** haben jeweils eigene Tasks, eigene Termine/Blocker, ein eigenes Arbeitszeit-Modell und eigene Kapazität (Privat färbt den Akzent lila). Beide Seiten ticken unabhängig: die automatische Übergabe der einen Seite kümmert sich nicht um die andere, beide können gleichzeitig einen aktiven Task haben.
+
+- Ein privater Task geht auch vormittags: umschalten, aktiv setzen, fertig. Soll die Arbeitsplanung die Unterbrechung sehen, drückst du auf der Arbeits-Seite kurz „⚡ Blocker jetzt".
+- Tasks wechseln die Seite im Detail-Modal über das Bereich-Feld und reihen sich drüben hinten ein. Ihre Phasen und ihre Historie wandern mit (zählen also rückwirkend im anderen Bereichs-Export).
+- Archiv und Wochen-Export gelten pro Bereich, der Export-Dateiname trägt den Bereich.
+
 ## Der Hauptscreen
 
 Von oben nach unten:

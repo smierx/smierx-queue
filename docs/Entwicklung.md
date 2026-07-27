@@ -30,19 +30,21 @@ Im Betrieb gibt es genau einen App-Container: die API served das gebaute Fronten
 
 ### Datenmodell
 
-- **Task**: Titel, Beschreibung, `geplant_am` (der Tag, auf dem der Task liegt), `position` (Queue-Reihenfolge pro Tag), `dauer_minuten`, `erledigt_am` (gesetzt = Archiv statt Löschen). Invariante: jeder offene Task liegt auf genau einem Tag ≥ heute.
+Alles Fachliche trägt einen **Bereich** (`arbeit` | `privat`, Konstante `BEREICHE`): zwei komplette Welten in einer App, der Frontend-Schalter wechselt alles auf einmal. Jede Query filtert darauf.
+
+- **Task**: Titel, Beschreibung, `bereich`, `geplant_am` (der Tag, auf dem der Task liegt), `position` (Queue-Reihenfolge pro Tag **und Bereich**), `dauer_minuten`, `erledigt_am` (gesetzt = Archiv statt Löschen, Archiv gilt pro Bereich). Invariante: jeder offene Task liegt auf genau einem Tag ≥ heute. Bereichs-/Tageswechsel per PATCH reiht ans Ende der Ziel-Queue, Phasen und Historie wandern mit dem Task.
 - **TaskPhase**: explizite aktiv-Phasen (`von`, `bis`, `bis=NULL` = läuft). Die Tag-Logik schreibt sie direkt (aktiv setzen öffnet, verlieren schließt), fürs Nachtragen sind sie per CRUD editierbar. Invariante: aktiv-Tag ⟺ genau eine offene Phase. Davon leben Zeitstrahl und Export.
 - **TaskTag** + **TagEvent**: Tags als Zeilen plus reine Anzeige-Historie (`gesetzt`/`entfernt`). Zustand-Tags verdrängen sich gegenseitig in `_tag_anwenden()`.
-- **TimeBlock**: Meetings/Blocker/Support mit Start und Ende.
-- **WorkSchedule**: das Arbeitszeit-Modell, genau eine Zeile (feste Id 1), Modus `stunden` oder `feste_zeiten`. Get-or-Create ist race-sicher (parallele erste Requests kollidieren am Primärschlüssel).
+- **TimeBlock**: Meetings/Blocker/Support mit Start, Ende und Bereich.
+- **WorkSchedule**: das Arbeitszeit-Modell, genau eine Zeile **pro Bereich** (Unique auf `bereich`), Modus `stunden` oder `feste_zeiten`. Get-or-Create ist race-sicher (parallele erste Requests kollidieren an der Unique-Constraint).
 
 ### Rollover
 
-`app/rollover.py`: offene Tasks mit `geplant_am < heute` wandern an den Kopf der heutigen Queue (Reihenfolge nach Tag und Position erhalten, geparkte wandern mit). Läuft er auf eine vergessene offene Phase, schließt er sie um Mitternacht (bzw. am Phasen-Start, falls der später liegt) und dreht `aktiv` auf `next`. Der Rollover läuft **lazy** statt um Mitternacht (der Rechner kann nachts aus sein): am Anfang des Hintergrund-Ticks, von `POST /queue/tick` und von `GET /tasks` für heute. Idempotent, eine Transaktion.
+`app/rollover.py`: offene Tasks mit `geplant_am < heute` wandern an den Kopf der heutigen Queue **ihres Bereichs** (Reihenfolge nach Tag und Position erhalten, geparkte wandern mit, beide Bereiche rollen unabhängig). Läuft er auf eine vergessene offene Phase, schließt er sie um Mitternacht (bzw. am Phasen-Start, falls der später liegt) und dreht `aktiv` auf `next`. Der Rollover läuft **lazy** statt um Mitternacht (der Rechner kann nachts aus sein): am Anfang des Hintergrund-Ticks, von `POST /queue/tick` und von `GET /tasks` für heute. Idempotent, eine Transaktion.
 
 ### Queue-Mechanik
 
-Kern ist `uebergabe_pruefen()` in `routers/tasks.py`: sind Tasks aktiv, aber keiner mehr in seiner geplanten Zeit (aktiv seit + Dauer, Blocker-Fenster schieben das Ende nach hinten), wird der nächste wartende Task aktiv. `next` zuerst, geparkte (`pausiert`, `holding`, `inaktiv`) übersprungen, höchstens ein Wechsel, ohne aktive Tasks passiert nichts, mitten im Blocker auch nicht. Betrachtet wird nur die heutige Queue, vorgeplante Tage fasst der Tick nie an. Der Endpoint `POST /queue/tick` und die Hintergrund-Schleife (`app/tick.py`, `TICK_INTERVALL_SEKUNDEN`) rufen dieselbe Funktion.
+Kern ist `uebergabe_pruefen()` in `routers/tasks.py`, sie läuft **pro Bereich**: sind Tasks aktiv, aber keiner mehr in seiner geplanten Zeit (aktiv seit + Dauer, Blocker-Fenster des Bereichs schieben das Ende nach hinten), wird der nächste wartende Task aktiv. `next` zuerst, geparkte (`pausiert`, `holding`, `inaktiv`) übersprungen, höchstens ein Wechsel, ohne aktive Tasks passiert nichts, mitten im Blocker auch nicht. Betrachtet wird nur die heutige Queue des Bereichs, vorgeplante Tage und der andere Bereich bleiben unberührt. Der Endpoint `POST /queue/tick` und die Hintergrund-Schleife (`app/tick.py`, `TICK_INTERVALL_SEKUNDEN`) prüfen beide Bereiche.
 
 **Wichtig:** die Schleife läuft im Lifespan. Bei mehreren Uvicorn-Workern liefe sie mehrfach, das Deployment nutzt deshalb bewusst **einen Worker**.
 
@@ -59,14 +61,16 @@ Deshalb braucht der Container `TZ` (Default im Compose `Europe/Berlin`), sonst k
 
 Alle Routen unter `/api`, dazu `GET /health`. Kurzüberblick:
 
+Fast alle Lese- und Queue-Endpunkte nehmen `bereich=arbeit|privat` (Default `arbeit`):
+
 | Bereich | Endpunkte |
 |---|---|
-| Tasks | `GET /tasks?datum=` (Tages-Queue, Default heute; `erledigt=true` = globales Archiv), `POST /tasks` (+ `geplant_am`), `GET/PATCH/DELETE /tasks/{id}` (PATCH `geplant_am` verschiebt ans Ende des Zieltags), `PUT/DELETE /tasks/{id}/tags/{tag}`, `POST /tasks/{id}/erledigt` (optional `{zeitpunkt}` retro), `DELETE /tasks/{id}/erledigt` (→ heute, hinten), `GET /tasks/{id}/historie` |
-| Phasen | `GET /phasen?datum=` (alle Phasen des Tages mit Task-Kontext), `POST /tasks/{id}/phasen` (nachtragen, `bis` Pflicht, keine Überlappung je Task), `PATCH/DELETE /phasen/{id}` (offene Phase schließen/löschen nimmt das aktiv-Tag mit runter) |
-| Queue | `PUT /queue/order` (Ziel-Reihenfolge eines Tages, `datum` Default heute), `POST /queue/tick` (Rollover + Übergabe + heutige Liste), `POST /queue/feierabend` |
-| Zeitblöcke | `GET/POST /timeblocks`, `PUT/DELETE /timeblocks/{id}` |
-| Arbeitszeit | `GET/PUT /schedule`, `GET /capacity?datum=` |
-| Export | `GET /export?woche=JJJJ-WXX` |
+| Tasks | `GET /tasks?datum=&bereich=` (Tages-Queue, Default heute; `erledigt=true` = Archiv des Bereichs), `POST /tasks` (+ `geplant_am`, `bereich`), `GET/PATCH/DELETE /tasks/{id}` (PATCH `geplant_am`/`bereich` verschiebt ans Ende der Ziel-Queue), `PUT/DELETE /tasks/{id}/tags/{tag}`, `POST /tasks/{id}/erledigt` (optional `{zeitpunkt}` retro), `DELETE /tasks/{id}/erledigt` (→ heute, hinten im eigenen Bereich), `GET /tasks/{id}/historie` |
+| Phasen | `GET /phasen?datum=&bereich=` (alle Phasen des Tages mit Task-Kontext), `POST /tasks/{id}/phasen` (nachtragen, `bis` Pflicht, keine Überlappung je Task), `PATCH/DELETE /phasen/{id}` (offene Phase schließen/löschen nimmt das aktiv-Tag mit runter) |
+| Queue | `PUT /queue/order` (Ziel-Reihenfolge eines Tages und Bereichs), `POST /queue/tick?bereich=` (Rollover + Übergabe beider Bereiche + Liste des angefragten), `POST /queue/feierabend?bereich=` |
+| Zeitblöcke | `GET /timeblocks?bereich=`, `POST /timeblocks` (+ `bereich`), `PUT/DELETE /timeblocks/{id}` |
+| Arbeitszeit | `GET/PUT /schedule?bereich=`, `GET /capacity?datum=&bereich=` |
+| Export | `GET /export?woche=JJJJ-WXX&bereich=` |
 
 Interaktive Doku wie bei FastAPI üblich unter `/docs`.
 

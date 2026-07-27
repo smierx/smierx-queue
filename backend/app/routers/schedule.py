@@ -13,20 +13,26 @@ router = APIRouter(tags=["schedule"])
 
 
 def _schedule_holen(db: Session, bereich: str) -> WorkSchedule:
-    """Genau eine Zeile pro Bereich, lazily angelegt."""
-    schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.bereich == bereich))
-    if schedule is None:
+    """Genau eine Zeile pro Bereich, lazily angelegt.
+
+    Als Schleife, weil ein IntegrityError zwei Ursachen haben kann: das Race
+    paralleler Erst-Requests (Unique auf bereich, der Verlierer liest die Zeile
+    des Gewinners) oder eine verstellte Id-Sequenz (Altbestand wurde mit fester
+    Id 1 angelegt, der erste neue Insert kollidiert dann am Primärschlüssel und
+    braucht einen zweiten Anlauf)."""
+    for _ in range(3):
+        schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.bereich == bereich))
+        if schedule is not None:
+            return schedule
         schedule = WorkSchedule(bereich=bereich)
         db.add(schedule)
         try:
             db.commit()
             db.refresh(schedule)
+            return schedule
         except IntegrityError:
-            # Beim ersten Seitenaufruf legen /schedule und /capacity parallel an,
-            # der Verlierer des Race (Unique auf bereich) liest die Zeile des Gewinners.
             db.rollback()
-            schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.bereich == bereich))
-    return schedule
+    raise RuntimeError(f"Arbeitszeit-Modell für {bereich} ließ sich nicht anlegen")
 
 
 @router.get("/schedule", response_model=ScheduleOut)
