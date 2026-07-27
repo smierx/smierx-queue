@@ -1,10 +1,23 @@
 from datetime import date, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from app.models import SCHEDULE_MODI, TIMEBLOCK_TYPEN, VALID_TAGS, ZUSTAND_TAGS
 
 WOCHENTAGE = ["mo", "di", "mi", "do", "fr", "sa", "so"]
+
+
+def _label_abstreifen(wert: datetime) -> datetime:
+    if isinstance(wert, datetime) and wert.tzinfo is not None:
+        return wert.replace(tzinfo=None)
+    return wert
+
+
+# Für Felder mit der Naiv-Lokal-Konvention (TimeBlock, TaskPhase): Postgres hängt
+# beim Lesen ein Session-TZ-Label an, der Wert selbst ist lokale Wandzeit. Ohne
+# das Abstreifen serialisiert die API "10:00Z" und der Browser macht 12:00 draus.
+NaiveZeit = Annotated[datetime, BeforeValidator(_label_abstreifen)]
 
 
 def _tags_pruefen(tags: list[str]) -> list[str]:
@@ -108,8 +121,8 @@ class PhaseOut(BaseModel):
 
     id: int
     task_id: int
-    von: datetime
-    bis: datetime | None
+    von: NaiveZeit
+    bis: NaiveZeit | None
 
 
 class TagesPhaseOut(BaseModel):
@@ -152,8 +165,8 @@ class TimeBlockOut(BaseModel):
     id: int
     titel: str
     typ: str
-    start: datetime
-    ende: datetime
+    start: NaiveZeit
+    ende: NaiveZeit
 
 
 # --- Arbeitszeit ---
