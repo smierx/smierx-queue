@@ -11,21 +11,23 @@ from datetime import date, datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Task, _phasenzeit
+from app.models import BEREICHE, Task, _phasenzeit
 
 logger = logging.getLogger("smierx_queue.rollover")
 
 
-def rollover_ausfuehren(db: Session) -> int:
-    """Gibt die Anzahl der verschobenen Tasks zurück. Committet selbst."""
+def _bereich_rollen(db: Session, bereich: str, heute: date) -> int:
     # Import hier statt oben: routers.tasks importiert dieses Modul.
     from app.routers.tasks import _tag_anwenden
 
-    heute = date.today()
     alte = list(
         db.scalars(
             select(Task)
-            .where(Task.erledigt_am.is_(None), Task.geplant_am < heute)
+            .where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am < heute,
+                Task.bereich == bereich,
+            )
             .order_by(Task.geplant_am, Task.position)
         )
     )
@@ -35,7 +37,11 @@ def rollover_ausfuehren(db: Session) -> int:
     heutige = list(
         db.scalars(
             select(Task)
-            .where(Task.erledigt_am.is_(None), Task.geplant_am == heute)
+            .where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am == heute,
+                Task.bereich == bereich,
+            )
             .order_by(Task.position)
         )
     )
@@ -54,6 +60,15 @@ def rollover_ausfuehren(db: Session) -> int:
     # Carry-Tasks an den Kopf, der heutige Bestand rückt dahinter.
     for position, task in enumerate(alte + heutige, start=1):
         task.position = position
-    db.commit()
-    logger.info("Rollover: %s Task(s) auf heute geschoben", len(alte))
     return len(alte)
+
+
+def rollover_ausfuehren(db: Session) -> int:
+    """Rollt beide Bereiche unabhängig. Gibt die Gesamtzahl der verschobenen
+    Tasks zurück, committet selbst."""
+    heute = date.today()
+    verschoben = sum(_bereich_rollen(db, bereich, heute) for bereich in sorted(BEREICHE))
+    if verschoben:
+        db.commit()
+        logger.info("Rollover: %s Task(s) auf heute geschoben", verschoben)
+    return verschoben

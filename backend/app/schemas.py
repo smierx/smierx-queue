@@ -1,11 +1,15 @@
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from app.models import SCHEDULE_MODI, TIMEBLOCK_TYPEN, VALID_TAGS, ZUSTAND_TAGS
 
 WOCHENTAGE = ["mo", "di", "mi", "do", "fr", "sa", "so"]
+
+# Als Literal statt freiem str: FastAPI/Pydantic lehnen alles andere mit 422 ab,
+# in Bodies wie in Query-Parametern. Muss zu models.BEREICHE passen.
+Bereich = Literal["arbeit", "privat"]
 
 
 def _label_abstreifen(wert: datetime) -> datetime:
@@ -40,6 +44,7 @@ class TaskCreate(BaseModel):
     tags: list[str] = []
     dauer_minuten: int = Field(default=60, ge=5, le=24 * 60)
     geplant_am: date | None = None  # None = heute
+    bereich: Bereich = "arbeit"
 
     _tags = field_validator("tags")(_tags_pruefen)
 
@@ -48,7 +53,9 @@ class TaskUpdate(BaseModel):
     titel: str | None = Field(default=None, min_length=1, max_length=300)
     beschreibung: str | None = None
     dauer_minuten: int | None = Field(default=None, ge=5, le=24 * 60)
-    geplant_am: date | None = None  # verschiebt den Task ans Ende des Zieltags
+    # Beides verschiebt ans Ende der Ziel-Queue (Zieltag bzw. Ziel-Bereich).
+    geplant_am: date | None = None
+    bereich: Bereich | None = None
 
 
 class ErledigtDaten(BaseModel):
@@ -69,6 +76,7 @@ class TaskOut(BaseModel):
     id: int
     titel: str
     beschreibung: str
+    bereich: str
     geplant_am: date
     position: int
     dauer_minuten: int
@@ -89,10 +97,11 @@ class TagEventOut(BaseModel):
 
 
 class QueueOrder(BaseModel):
-    """Komplette Ziel-Reihenfolge eines Tages, wie sie nach dem Drag & Drop aussieht."""
+    """Komplette Ziel-Reihenfolge eines Tages und Bereichs, wie nach dem Drag & Drop."""
 
     task_ids: list[int] = Field(min_length=1)
     datum: date | None = None  # None = heute
+    bereich: Bereich = "arbeit"
 
 
 # --- Phasen (Nachtragen) ---

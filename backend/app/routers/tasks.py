@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
+    BEREICHE,
     VALID_TAGS,
     ZUSTAND_TAGS,
     TagEvent,
@@ -16,7 +17,15 @@ from app.models import (
     TimeBlock,
 )
 from app.rollover import rollover_ausfuehren
-from app.schemas import ErledigtDaten, QueueOrder, TagEventOut, TaskCreate, TaskOut, TaskUpdate
+from app.schemas import (
+    Bereich,
+    ErledigtDaten,
+    QueueOrder,
+    TagEventOut,
+    TaskCreate,
+    TaskOut,
+    TaskUpdate,
+)
 
 router = APIRouter(tags=["tasks"])
 logger = logging.getLogger("smierx_queue.tasks")
@@ -31,10 +40,10 @@ def _utc_naiv(lokal: datetime) -> datetime:
     return lokal.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _tages_ende_position(db: Session, tag: date) -> int:
+def _tages_ende_position(db: Session, tag: date, bereich: str) -> int:
     max_position = db.scalar(
         select(func.max(Task.position)).where(
-            Task.erledigt_am.is_(None), Task.geplant_am == tag
+            Task.erledigt_am.is_(None), Task.geplant_am == tag, Task.bereich == bereich
         )
     )
     return (max_position or 0) + 1
@@ -81,10 +90,12 @@ def tasks_auflisten(
     datum: date | None = None,
     tag: str | None = None,
     erledigt: bool = False,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> list[Task]:
-    """Offene Tasks eines Tages (Default heute), das Archiv (erledigt=true) ist global."""
-    stmt = select(Task)
+    """Offene Tasks eines Tages und Bereichs (Default heute/arbeit), das Archiv
+    (erledigt=true) gilt pro Bereich und über alle Tage."""
+    stmt = select(Task).where(Task.bereich == bereich)
     if erledigt:
         stmt = stmt.where(Task.erledigt_am.is_not(None)).order_by(Task.erledigt_am.desc())
     else:
@@ -110,8 +121,9 @@ def task_anlegen(
     task = Task(
         titel=daten.titel,
         beschreibung=daten.beschreibung,
+        bereich=daten.bereich,
         geplant_am=geplant_am,
-        position=_tages_ende_position(db, geplant_am),
+        position=_tages_ende_position(db, geplant_am, daten.bereich),
         dauer_minuten=daten.dauer_minuten,
     )
     task.tag_zeilen = [TaskTag(tag=t) for t in daten.tags]
@@ -142,9 +154,13 @@ def task_aendern(
         task.beschreibung = daten.beschreibung
     if daten.dauer_minuten is not None:
         task.dauer_minuten = daten.dauer_minuten
-    if daten.geplant_am is not None and daten.geplant_am != task.geplant_am:
-        task.geplant_am = daten.geplant_am
-        task.position = _tages_ende_position(db, daten.geplant_am)
+    # Tag- und/oder Bereichswechsel: eine Neupositionierung ans Ende der Ziel-Queue.
+    ziel_tag = daten.geplant_am if daten.geplant_am is not None else task.geplant_am
+    ziel_bereich = daten.bereich if daten.bereich is not None else task.bereich
+    if (ziel_tag, ziel_bereich) != (task.geplant_am, task.bereich):
+        task.geplant_am = ziel_tag
+        task.bereich = ziel_bereich
+        task.position = _tages_ende_position(db, ziel_tag, ziel_bereich)
     db.commit()
     db.refresh(task)
     return task
@@ -219,7 +235,8 @@ def task_wieder_oeffnen(task_id: int, db: Session = Depends(get_db)) -> Task:
     if task.erledigt_am is not None:
         task.erledigt_am = None
         task.geplant_am = date.today()
-        task.position = _tages_ende_position(db, task.geplant_am)  # hinten einreihen
+        # hinten in der Queue des eigenen Bereichs einreihen
+        task.position = _tages_ende_position(db, task.geplant_am, task.bereich)
         db.commit()
         db.refresh(task)
     return task
@@ -267,23 +284,39 @@ def _geplantes_ende(
     return cursor + rest
 
 
-def uebergabe_pruefen(db: Session) -> Task | None:
+def uebergabe_pruefen(db: Session, bereich: str) -> Task | None:
     """Automatischer Statuswechsel als Übergabe: sind Tasks aktiv, aber keiner mehr
     in seiner geplanten Zeit (aktiv seit + Dauer, Blocker schieben das Ende nach
     hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
     Feierabend), passiert nichts. Mitten in einem Blocker passiert nichts.
     Höchstens ein Wechsel pro Aufruf, geparkte Tasks (pausiert, holding, inaktiv)
-    bleiben liegen. Betrachtet nur die heutige Queue, vorgeplante Tage fasst der
-    Tick nie an. Committet selbst, gibt den aktivierten Task zurück."""
+    bleiben liegen. Betrachtet nur die heutige Queue des Bereichs, vorgeplante
+    Tage und der andere Bereich bleiben unberührt. Committet selbst, gibt den
+    aktivierten Task zurück."""
     tasks = list(
         db.scalars(
             select(Task)
-            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am == date.today(),
+                Task.bereich == bereich,
+            )
             .order_by(Task.position)
         )
     )
     jetzt = datetime.now()  # lokale Zeit, konsistent zu aktiv_seit und TimeBlocks
-    fenster = _fenster_zusammenfassen(list(db.scalars(select(TimeBlock))))
+    heute_start = datetime.combine(date.today(), time.min)
+    fenster = _fenster_zusammenfassen(
+        list(
+            db.scalars(
+                select(TimeBlock).where(
+                    TimeBlock.bereich == bereich,
+                    TimeBlock.ende > heute_start,
+                    TimeBlock.start < heute_start + timedelta(days=1),
+                )
+            )
+        )
+    )
     im_blocker = any(von <= jetzt < bis for von, bis in fenster)
     aktive = [t for t in tasks if "aktiv" in t.tags]
     laeuft_noch = any(
@@ -307,29 +340,39 @@ def uebergabe_pruefen(db: Session) -> Task | None:
 
 
 @router.post("/queue/tick", response_model=list[TaskOut])
-def queue_tick(db: Session = Depends(get_db)) -> list[Task]:
-    """Rollover fahren, Übergabe prüfen (siehe uebergabe_pruefen) und die heutige
-    Task-Liste zurückgeben, wie GET /tasks. Läuft zusätzlich als
-    Hintergrund-Schleife im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
+def queue_tick(bereich: Bereich = "arbeit", db: Session = Depends(get_db)) -> list[Task]:
+    """Rollover fahren, Übergabe für beide Bereiche prüfen und die heutige Liste
+    des angefragten Bereichs zurückgeben. Läuft zusätzlich als Hintergrund-
+    Schleife im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
     rollover_ausfuehren(db)
-    uebergabe_pruefen(db)
+    for b in sorted(BEREICHE):
+        uebergabe_pruefen(db, b)
     return list(
         db.scalars(
             select(Task)
-            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am == date.today(),
+                Task.bereich == bereich,
+            )
             .order_by(Task.position)
         )
     )
 
 
 @router.post("/queue/feierabend", response_model=list[TaskOut])
-def feierabend(db: Session = Depends(get_db)) -> list[Task]:
-    """Feierabend: alle aktiven Tasks wandern auf next, ihre aktiv-Phasen enden.
-    Der automatische Statuswechsel bleibt danach still, bis wieder etwas aktiv ist."""
+def feierabend(bereich: Bereich = "arbeit", db: Session = Depends(get_db)) -> list[Task]:
+    """Feierabend im Bereich: alle aktiven Tasks wandern auf next, ihre Phasen
+    enden. Der automatische Statuswechsel bleibt danach still, bis wieder etwas
+    aktiv ist. Der andere Bereich läuft unberührt weiter."""
     tasks = list(
         db.scalars(
             select(Task)
-            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am == date.today(),
+                Task.bereich == bereich,
+            )
             .order_by(Task.position)
         )
     )
@@ -345,18 +388,23 @@ def queue_umsortieren(
     daten: QueueOrder,
     db: Session = Depends(get_db),
 ) -> list[Task]:
-    """Nimmt die komplette Ziel-Reihenfolge eines Tages entgegen (wie nach dem
-    Drag & Drop), Default heute."""
+    """Nimmt die komplette Ziel-Reihenfolge eines Tages und Bereichs entgegen
+    (wie nach dem Drag & Drop), Default heute/arbeit."""
     ziel = daten.datum or date.today()
     tasks = {
         t.id: t
         for t in db.scalars(
-            select(Task).where(Task.erledigt_am.is_(None), Task.geplant_am == ziel)
+            select(Task).where(
+                Task.erledigt_am.is_(None),
+                Task.geplant_am == ziel,
+                Task.bereich == daten.bereich,
+            )
         )
     }
     if set(daten.task_ids) != set(tasks) or len(daten.task_ids) != len(tasks):
         raise HTTPException(
-            422, "task_ids muss jede offene Task-Id des Tages genau einmal enthalten"
+            422,
+            "task_ids muss jede offene Task-Id des Tages und Bereichs genau einmal enthalten",
         )
     for position, task_id in enumerate(daten.task_ids, start=1):
         tasks[task_id].position = position
