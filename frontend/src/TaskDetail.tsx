@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "./api";
 import { PhaseModal } from "./PhaseModal";
-import type { Phase, TagEvent, Task } from "./types";
+import { BEREICHE, type Bereich, type Phase, type TagEvent, type Task } from "./types";
 
 function phasenText(von: string, bis: string | null): string {
   const format: Intl.DateTimeFormatOptions = {
@@ -30,6 +30,7 @@ export function TaskDetail({ task, onClose, onChange }: {
   const [beschreibung, setBeschreibung] = useState(task.beschreibung);
   const [dauer, setDauer] = useState(String(task.dauer_minuten));
   const [geplantAm, setGeplantAm] = useState(task.geplant_am);
+  const [bereich, setBereich] = useState<Bereich>(task.bereich);
   const [erledigtUm, setErledigtUm] = useState(jetztLokal());
   const [historie, setHistorie] = useState<TagEvent[]>([]);
   const [phaseEdit, setPhaseEdit] = useState<Phase | null>(null);
@@ -46,6 +47,7 @@ export function TaskDetail({ task, onClose, onChange }: {
       beschreibung,
       dauer_minuten: dauerMinuten,
       geplant_am: geplantAm !== task.geplant_am ? geplantAm : undefined,
+      bereich: bereich !== task.bereich ? bereich : undefined,
     });
     onChange();
     onClose();
@@ -94,14 +96,29 @@ export function TaskDetail({ task, onClose, onChange }: {
               />
             </label>
             {task.erledigt_am === null && (
-              <label>
-                Geplant am
-                <input
-                  type="date"
-                  value={geplantAm}
-                  onChange={(e) => e.target.value && setGeplantAm(e.target.value)}
-                />
-              </label>
+              <>
+                <label>
+                  Geplant am
+                  <input
+                    type="date"
+                    value={geplantAm}
+                    onChange={(e) => e.target.value && setGeplantAm(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Bereich
+                  <select
+                    value={bereich}
+                    onChange={(e) => setBereich(e.target.value as Bereich)}
+                  >
+                    {BEREICHE.map((b) => (
+                      <option key={b} value={b}>
+                        {b === "arbeit" ? "Arbeit" : "Privat"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
             )}
           </div>
           <div className="modal-aktionen">

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import {
   BLOCK_TYPEN,
+  type Bereich,
   type BlockTyp,
   type Capacity,
   type Phase,
@@ -85,6 +86,7 @@ interface Balken {
 
 export function Tagesleiste({
   datum,
+  bereich,
   modus,
   kapazitaet,
   phasen,
@@ -96,6 +98,7 @@ export function Tagesleiste({
   onPhaseNeu,
 }: {
   datum: string; // YYYY-MM-DD, der angezeigte Tag
+  bereich: Bereich;
   modus: LeistenModus;
   kapazitaet: Capacity;
   phasen: Phase[];
@@ -409,6 +412,7 @@ export function Tagesleiste({
     const block = await api.timeblockAnlegen({
       titel: "Unterbrechung",
       typ: "blocker",
+      bereich,
       start: amTagUm(von),
       ende: amTagUm(zeitPlus(von, 30)),
     });
@@ -432,6 +436,7 @@ export function Tagesleiste({
     const daten = {
       titel: form.titel.trim(),
       typ: form.typ,
+      bereich,
       start: amTagUm(form.von),
       ende: amTagUm(form.bis),
     };

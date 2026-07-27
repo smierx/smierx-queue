@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "./api";
-import type { Phase, Task } from "./types";
+import type { Bereich, Phase, Task } from "./types";
 
 function alsDatum(iso: string): string {
   return iso.slice(0, 10);
@@ -14,9 +14,10 @@ function alsZeit(iso: string): string {
 
 // Bearbeitet eine Phase oder trägt eine neue nach (phase = null). Von/Bis haben
 // eigene Datumsfelder, damit Phasen über Mitternacht nicht kaputtgehen.
-export function PhaseModal({ phase, datum, onClose, onChange }: {
+export function PhaseModal({ phase, datum, bereich, onClose, onChange }: {
   phase: Phase | null;
   datum: string; // Vorbelegung fürs Nachtragen (YYYY-MM-DD)
+  bereich?: Bereich; // schränkt die Task-Auswahl beim Nachtragen ein
   onClose: () => void;
   onChange: () => void;
 }) {
@@ -34,11 +35,12 @@ export function PhaseModal({ phase, datum, onClose, onChange }: {
 
   useEffect(() => {
     if (!neu) return;
-    // Kandidaten fürs Nachtragen: die heutige Queue plus das Archiv.
-    Promise.all([api.tasks(), api.tasksErledigt()]).then(([offene, erledigte]) =>
+    // Kandidaten fürs Nachtragen: die heutige Queue plus das Archiv des Bereichs.
+    const b = bereich ?? "arbeit";
+    Promise.all([api.tasks(b), api.tasksErledigt(b)]).then(([offene, erledigte]) =>
       setTaskListe([...offene, ...erledigte]),
     );
-  }, [neu]);
+  }, [neu, bereich]);
 
   async function speichern(event: React.FormEvent) {
     event.preventDefault();

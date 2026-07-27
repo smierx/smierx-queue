@@ -1,3 +1,7 @@
+// Zwei komplette Welten in einer App, der Header-Schalter wechselt alles.
+export const BEREICHE = ["arbeit", "privat"] as const;
+export type Bereich = (typeof BEREICHE)[number];
+
 export const ALLE_TAGS = [
   "aktiv",
   "next",
@@ -19,6 +23,7 @@ export interface Task {
   id: number;
   titel: string;
   beschreibung: string;
+  bereich: Bereich;
   geplant_am: string;
   position: number;
   dauer_minuten: number;
@@ -42,6 +47,7 @@ export interface Phase {
 }
 
 export interface Schedule {
+  bereich: Bereich;
   modus: "stunden" | "feste_zeiten";
   stunden_pro_tag: number;
   zeiten: Record<string, [string, string] | null> | null;
@@ -55,6 +61,7 @@ export interface TagEvent {
 
 export interface TimeBlock {
   id: number;
+  bereich: Bereich;
   titel: string;
   typ: BlockTyp;
   start: string;

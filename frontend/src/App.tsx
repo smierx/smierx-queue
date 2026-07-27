@@ -6,7 +6,21 @@ import { PhaseModal } from "./PhaseModal";
 import { SchedulePanel } from "./SchedulePanel";
 import { Tagesleiste, type LeistenModus } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
-import { ALLE_TAGS, type Capacity, type Phase, type Tag, type Task } from "./types";
+import {
+  ALLE_TAGS,
+  BEREICHE,
+  type Bereich,
+  type Capacity,
+  type Phase,
+  type Tag,
+  type Task,
+} from "./types";
+
+const BEREICH_NAMEN: Record<Bereich, string> = { arbeit: "Arbeit", privat: "Privat" };
+
+function gespeicherterBereich(): Bereich {
+  return localStorage.getItem("queue.bereich") === "privat" ? "privat" : "arbeit";
+}
 
 function minutenAlsText(minuten: number): string {
   const h = Math.floor(minuten / 60);
@@ -43,6 +57,7 @@ function TagChips({ task, onToggle }: { task: Task; onToggle: (tag: Tag) => void
 
 export default function App() {
   const [datum, setDatum] = useState(heuteIso());
+  const [bereich, setBereich] = useState<Bereich>(gespeicherterBereich);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [phasen, setPhasen] = useState<Phase[]>([]);
   const [erledigte, setErledigte] = useState<Task[]>([]);
@@ -64,9 +79,9 @@ export default function App() {
       // Heute übernimmt der Tick Rollover und Statuswechsel und liefert die
       // Liste, andere Tage werden nur gelesen. Die Phasen füttern den Zeitstrahl.
       const [t, k, p] = await Promise.all([
-        datum === heuteIso() ? api.queueTick() : api.tasks(datum),
-        api.kapazitaet(datum),
-        api.phasen(datum),
+        datum === heuteIso() ? api.queueTick(bereich) : api.tasks(bereich, datum),
+        api.kapazitaet(bereich, datum),
+        api.phasen(bereich, datum),
       ]);
       setTasks(t);
       setKapazitaet(k);
@@ -75,15 +90,24 @@ export default function App() {
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
     }
-  }, [datum]);
+  }, [datum, bereich]);
 
   const ladenArchiv = useCallback(async () => {
     try {
-      setErledigte(await api.tasksErledigt());
+      setErledigte(await api.tasksErledigt(bereich));
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [bereich]);
+
+  function bereichWechseln(neu: Bereich) {
+    if (neu === bereich) return;
+    localStorage.setItem("queue.bereich", neu);
+    // Offene Modals zeigen sonst Objekte der anderen Seite.
+    setDetail(null);
+    setPhaseModal(null);
+    setBereich(neu);
+  }
 
   useEffect(() => {
     laden();
@@ -100,7 +124,7 @@ export default function App() {
   async function anlegen(event: React.FormEvent) {
     event.preventDefault();
     if (!neuerTitel.trim()) return;
-    await api.taskAnlegen(neuerTitel.trim(), istHeute ? undefined : datum);
+    await api.taskAnlegen(neuerTitel.trim(), bereich, istHeute ? undefined : datum);
     setNeuerTitel("");
     laden();
   }
@@ -119,12 +143,12 @@ export default function App() {
 
   async function exportieren() {
     if (!exportWoche) return;
-    const daten = await api.exportWoche(exportWoche);
+    const daten = await api.exportWoche(exportWoche, bereich);
     const blob = new Blob([JSON.stringify(daten, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `smierx-queue-${exportWoche}.json`;
+    a.download = `smierx-queue-${bereich}-${exportWoche}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -145,16 +169,28 @@ export default function App() {
     const angezeigt = queue.map((t) => t.id).filter((id) => id !== dragId);
     angezeigt.splice(angezeigt.indexOf(zielId), 0, dragId);
     setDragId(null);
-    await api.umsortieren([...aktive.map((t) => t.id), ...angezeigt], datum);
+    await api.umsortieren([...aktive.map((t) => t.id), ...angezeigt], bereich, datum);
     laden();
   }
 
   return (
-    <div className="wrap">
+    <div className="wrap" data-bereich={bereich}>
       <header>
         <h1>
           smierx<span>-queue</span>
         </h1>
+        <div className="bereich-toggle" role="group" aria-label="Bereich wechseln">
+          {BEREICHE.map((b) => (
+            <button
+              key={b}
+              type="button"
+              className={b === bereich ? "an" : ""}
+              onClick={() => bereichWechseln(b)}
+            >
+              {BEREICH_NAMEN[b]}
+            </button>
+          ))}
+        </div>
         {kapazitaet && (
           <div className="kapazitaet">
             {datumLabel(datum)} {minutenAlsText(kapazitaet.frei_minuten)} frei
@@ -181,6 +217,7 @@ export default function App() {
         {kapazitaet && (
           <Tagesleiste
             datum={datum}
+            bereich={bereich}
             modus={modus}
             kapazitaet={kapazitaet}
             phasen={phasen}
@@ -194,7 +231,7 @@ export default function App() {
         )}
       </section>
 
-      <SchedulePanel onChange={laden} />
+      <SchedulePanel bereich={bereich} onChange={laden} />
 
       {istHeute && (
         <section>
@@ -205,7 +242,7 @@ export default function App() {
                 type="button"
                 className="sekundaer h2-aktion"
                 title="Alle aktiven Tasks auf next setzen"
-                onClick={() => api.feierabend().then(laden)}
+                onClick={() => api.feierabend(bereich).then(laden)}
               >
                 🌙 Feierabend
               </button>
@@ -351,6 +388,7 @@ export default function App() {
         <PhaseModal
           phase={phaseModal.phase}
           datum={datum}
+          bereich={bereich}
           onClose={() => setPhaseModal(null)}
           onChange={laden}
         />

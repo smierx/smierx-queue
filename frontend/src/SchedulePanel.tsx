@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "./api";
-import type { Schedule } from "./types";
+import type { Bereich, Schedule } from "./types";
 
 const WOCHENTAGE: [string, string][] = [
   ["mo", "Mo"],
@@ -15,14 +15,18 @@ const WOCHENTAGE: [string, string][] = [
 
 const DEFAULT_FENSTER: [string, string] = ["08:00", "16:30"];
 
-export function SchedulePanel({ onChange }: { onChange: () => void }) {
+export function SchedulePanel({ bereich, onChange }: {
+  bereich: Bereich;
+  onChange: () => void;
+}) {
   const [offen, setOffen] = useState(false);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
 
   useEffect(() => {
-    api.schedule().then(setSchedule).catch(() => {});
-  }, []);
+    setSchedule(null); // altes Modell nicht anzeigen, während der Wechsel lädt
+    api.schedule(bereich).then(setSchedule).catch(() => {});
+  }, [bereich]);
 
   if (!schedule) return null;
 
@@ -35,7 +39,7 @@ export function SchedulePanel({ onChange }: { onChange: () => void }) {
         schedule.modus === "feste_zeiten"
           ? Object.fromEntries(WOCHENTAGE.map(([key]) => [key, schedule.zeiten?.[key] ?? null]))
           : schedule.zeiten;
-      setSchedule(await api.scheduleSetzen({ ...schedule, zeiten }));
+      setSchedule(await api.scheduleSetzen({ ...schedule, zeiten }, bereich));
       onChange();
       setOffen(false);
     } catch (e) {
