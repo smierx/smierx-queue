@@ -212,17 +212,17 @@ def test_tick_hoechstens_ein_wechsel(client):
 
 def test_hintergrund_tick_wechselt_ohne_request(client):
     # Die Schleife im Backend macht die Übergabe auch ohne offenen Browser.
-    from app.tick import alle_user_ticken
+    from app.tick import tick_durchlauf
 
     a = _task(client, "A", tags=["aktiv"])
     b = _task(client, "B")
     _abgelaufen(a["id"])
 
-    alle_user_ticken()
+    tick_durchlauf()
     assert "aktiv" in _tags(client, b["id"])
 
 
 def test_hintergrund_tick_ohne_daten(client):
-    from app.tick import alle_user_ticken
+    from app.tick import tick_durchlauf
 
-    alle_user_ticken()  # darf nicht knallen
+    tick_durchlauf()  # darf nicht knallen

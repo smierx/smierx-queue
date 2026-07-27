@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import aktueller_user
 from app.database import get_db
 from app.models import TimeBlock, WorkSchedule
 from app.schemas import WOCHENTAGE, CapacityOut, ScheduleOut, ScheduleUpdate, _minuten
@@ -13,11 +12,13 @@ from app.schemas import WOCHENTAGE, CapacityOut, ScheduleOut, ScheduleUpdate, _m
 router = APIRouter(tags=["schedule"])
 
 
-def _schedule_holen(db: Session, user: str) -> WorkSchedule:
-    """Eine Zeile pro User, lazily angelegt."""
-    schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.user_id == user))
+def _schedule_holen(db: Session) -> WorkSchedule:
+    """Genau eine Zeile, lazily angelegt."""
+    schedule = db.scalar(select(WorkSchedule))
     if schedule is None:
-        schedule = WorkSchedule(user_id=user)
+        # Feste Id: parallele Erst-Anlagen kollidieren am Primärschlüssel
+        # statt eine zweite Zeile zu erzeugen.
+        schedule = WorkSchedule(id=1)
         db.add(schedule)
         try:
             db.commit()
@@ -26,24 +27,21 @@ def _schedule_holen(db: Session, user: str) -> WorkSchedule:
             # Beim ersten Seitenaufruf legen /schedule und /capacity parallel an,
             # der Verlierer des Race liest einfach die Zeile des Gewinners.
             db.rollback()
-            schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.user_id == user))
+            schedule = db.scalar(select(WorkSchedule))
     return schedule
 
 
 @router.get("/schedule", response_model=ScheduleOut)
-def schedule_lesen(
-    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> WorkSchedule:
-    return _schedule_holen(db, user)
+def schedule_lesen(db: Session = Depends(get_db)) -> WorkSchedule:
+    return _schedule_holen(db)
 
 
 @router.put("/schedule", response_model=ScheduleOut)
 def schedule_setzen(
     daten: ScheduleUpdate,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> WorkSchedule:
-    schedule = _schedule_holen(db, user)
+    schedule = _schedule_holen(db)
     schedule.modus = daten.modus
     schedule.stunden_pro_tag = daten.stunden_pro_tag
     schedule.zeiten = daten.zeiten
@@ -75,11 +73,10 @@ def _intervalle_mergen(
 def kapazitaet(
     datum: date | None = None,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> CapacityOut:
     """Freie Kapazität eines Tages: Arbeitszeit minus Termine/Blocker."""
     tag = datum or date.today()
-    schedule = _schedule_holen(db, user)
+    schedule = _schedule_holen(db)
 
     tag_start = datetime.combine(tag, time.min)
     tag_ende = datetime.combine(tag, time.max)
@@ -102,11 +99,7 @@ def kapazitaet(
     bloecke = list(
         db.scalars(
             select(TimeBlock)
-            .where(
-                TimeBlock.user_id == user,
-                TimeBlock.ende > tag_start,
-                TimeBlock.start < tag_ende,
-            )
+            .where(TimeBlock.ende > tag_start, TimeBlock.start < tag_ende)
             .order_by(TimeBlock.start)
         )
     )

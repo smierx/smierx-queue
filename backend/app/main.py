@@ -53,16 +53,6 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/config")
-def frontend_config() -> dict:
-    """Laufzeit-Config fürs Frontend, damit das Image deployment-agnostisch bleibt."""
-    return {
-        "keycloak_url": settings.frontend_keycloak_url,
-        "keycloak_realm": settings.frontend_keycloak_realm,
-        "keycloak_client": settings.frontend_keycloak_client,
-    }
-
-
 # Im Produktions-Image liegt das gebaute Frontend unter static/.
 _static = Path(__file__).parent.parent / "static"
 if _static.is_dir():

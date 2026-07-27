@@ -7,17 +7,8 @@ import type {
   TimeBlock,
 } from "./types";
 
-// Wird in main.tsx gesetzt, sobald Keycloak konfiguriert ist.
-let tokenHolen: () => Promise<string | null> = async () => null;
-
-export function setTokenHolen(fn: () => Promise<string | null>) {
-  tokenHolen = fn;
-}
-
 async function request<T>(pfad: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = await tokenHolen();
-  if (token) headers.Authorization = `Bearer ${token}`;
 
   const antwort = await fetch(`/api${pfad}`, { headers, ...init });
   if (!antwort.ok) {

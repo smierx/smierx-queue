@@ -12,7 +12,7 @@ def test_schedule_get_or_create_ueberlebt_race(client, monkeypatch):
     from app.routers.schedule import _schedule_holen
 
     gewinner = SessionLocal()
-    gewinner.add(WorkSchedule(user_id="dev"))
+    gewinner.add(WorkSchedule(id=1))
     gewinner.commit()
     gewinner.close()
 
@@ -26,9 +26,8 @@ def test_schedule_get_or_create_ueberlebt_race(client, monkeypatch):
         return None if aufrufe["n"] == 1 else echtes_scalar(stmt)
 
     monkeypatch.setattr(verlierer, "scalar", scalar_mit_race)
-    schedule = _schedule_holen(verlierer, "dev")
+    schedule = _schedule_holen(verlierer)
     assert schedule is not None
-    assert schedule.user_id == "dev"
     verlierer.close()
 
 

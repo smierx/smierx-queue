@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import aktueller_user
 from app.database import get_db
 from app.models import Task, TimeBlock, _lokal
 from app.routers.tasks import _fenster_zusammenfassen
@@ -52,15 +51,14 @@ def _minuten(delta: timedelta) -> int:
 def export_woche(
     woche: str | None = None,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> ExportOut:
     """Wochen-Export als JSON: alle aktiv-Phasen (Arbeitszeit abzüglich Blocker),
     erledigte Tasks und Blocker der Woche. Ohne Parameter die aktuelle Woche."""
     woche, start, ende = _wochen_fenster(woche)
     jetzt = datetime.now()
 
-    tasks = list(db.scalars(select(Task).where(Task.user_id == user)))
-    bloecke = list(db.scalars(select(TimeBlock).where(TimeBlock.user_id == user)))
+    tasks = list(db.scalars(select(Task)))
+    bloecke = list(db.scalars(select(TimeBlock)))
     fenster = _fenster_zusammenfassen(bloecke)
 
     phasen: list[ExportPhase] = []

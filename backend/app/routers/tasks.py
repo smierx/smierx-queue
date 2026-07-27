@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import aktueller_user
 from app.database import get_db
 from app.models import (
     VALID_TAGS,
@@ -25,9 +24,9 @@ def _jetzt_utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _task_holen(db: Session, task_id: int, user: str) -> Task:
+def _task_holen(db: Session, task_id: int) -> Task:
     task = db.get(Task, task_id)
-    if task is None or task.user_id != user:
+    if task is None:
         raise HTTPException(404, f"Task {task_id} nicht gefunden")
     return task
 
@@ -54,9 +53,8 @@ def tasks_auflisten(
     tag: str | None = None,
     erledigt: bool = False,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> list[Task]:
-    stmt = select(Task).where(Task.user_id == user)
+    stmt = select(Task)
     if erledigt:
         stmt = stmt.where(Task.erledigt_am.is_not(None)).order_by(Task.erledigt_am.desc())
     else:
@@ -71,11 +69,9 @@ def tasks_auflisten(
 def task_anlegen(
     daten: TaskCreate,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> Task:
-    max_position = db.scalar(select(func.max(Task.position)).where(Task.user_id == user))
+    max_position = db.scalar(select(func.max(Task.position)))
     task = Task(
-        user_id=user,
         titel=daten.titel,
         beschreibung=daten.beschreibung,
         position=(max_position or 0) + 1,
@@ -90,10 +86,8 @@ def task_anlegen(
 
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
-def task_lesen(
-    task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> Task:
-    return _task_holen(db, task_id, user)
+def task_lesen(task_id: int, db: Session = Depends(get_db)) -> Task:
+    return _task_holen(db, task_id)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
@@ -101,9 +95,8 @@ def task_aendern(
     task_id: int,
     daten: TaskUpdate,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> Task:
-    task = _task_holen(db, task_id, user)
+    task = _task_holen(db, task_id)
     if daten.titel is not None:
         task.titel = daten.titel
     if daten.beschreibung is not None:
@@ -116,10 +109,8 @@ def task_aendern(
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
-def task_loeschen(
-    task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> None:
-    db.delete(_task_holen(db, task_id, user))
+def task_loeschen(task_id: int, db: Session = Depends(get_db)) -> None:
+    db.delete(_task_holen(db, task_id))
     db.commit()
 
 
@@ -128,9 +119,8 @@ def tag_setzen(
     task_id: int,
     tag: str,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> Task:
-    task = _task_holen(db, task_id, user)
+    task = _task_holen(db, task_id)
     _tag_pruefen(tag)
     if tag not in task.tags:
         _tag_anwenden(task, tag)
@@ -144,9 +134,8 @@ def tag_entfernen(
     task_id: int,
     tag: str,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> Task:
-    task = _task_holen(db, task_id, user)
+    task = _task_holen(db, task_id)
     _tag_pruefen(tag)
     zeile = next((z for z in task.tag_zeilen if z.tag == tag), None)
     if zeile is not None:
@@ -158,11 +147,9 @@ def tag_entfernen(
 
 
 @router.post("/tasks/{task_id}/erledigt", response_model=TaskOut)
-def task_erledigen(
-    task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> Task:
+def task_erledigen(task_id: int, db: Session = Depends(get_db)) -> Task:
     """Task ins Archiv statt löschen."""
-    task = _task_holen(db, task_id, user)
+    task = _task_holen(db, task_id)
     if task.erledigt_am is None:
         task.erledigt_am = _jetzt_utc()
         db.commit()
@@ -171,13 +158,11 @@ def task_erledigen(
 
 
 @router.delete("/tasks/{task_id}/erledigt", response_model=TaskOut)
-def task_wieder_oeffnen(
-    task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> Task:
-    task = _task_holen(db, task_id, user)
+def task_wieder_oeffnen(task_id: int, db: Session = Depends(get_db)) -> Task:
+    task = _task_holen(db, task_id)
     if task.erledigt_am is not None:
         task.erledigt_am = None
-        max_position = db.scalar(select(func.max(Task.position)).where(Task.user_id == user))
+        max_position = db.scalar(select(func.max(Task.position)))
         task.position = (max_position or 0) + 1  # hinten wieder einreihen
         db.commit()
         db.refresh(task)
@@ -185,10 +170,8 @@ def task_wieder_oeffnen(
 
 
 @router.get("/tasks/{task_id}/historie", response_model=list[TagEventOut])
-def historie_lesen(
-    task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> list[TagEvent]:
-    return _task_holen(db, task_id, user).historie
+def historie_lesen(task_id: int, db: Session = Depends(get_db)) -> list[TagEvent]:
+    return _task_holen(db, task_id).historie
 
 
 # Geparkte Tasks überspringt der automatische Statuswechsel.
@@ -225,7 +208,7 @@ def _geplantes_ende(
     return cursor + rest
 
 
-def uebergabe_pruefen(db: Session, user: str) -> Task | None:
+def uebergabe_pruefen(db: Session) -> Task | None:
     """Automatischer Statuswechsel als Übergabe: sind Tasks aktiv, aber keiner mehr
     in seiner geplanten Zeit (aktiv seit + Dauer, Blocker schieben das Ende nach
     hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
@@ -234,15 +217,11 @@ def uebergabe_pruefen(db: Session, user: str) -> Task | None:
     bleiben liegen. Committet selbst, gibt den aktivierten Task zurück."""
     tasks = list(
         db.scalars(
-            select(Task)
-            .where(Task.user_id == user, Task.erledigt_am.is_(None))
-            .order_by(Task.position)
+            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
         )
     )
     jetzt = datetime.now()  # lokale Zeit, konsistent zu aktiv_seit und TimeBlocks
-    fenster = _fenster_zusammenfassen(
-        list(db.scalars(select(TimeBlock).where(TimeBlock.user_id == user)))
-    )
+    fenster = _fenster_zusammenfassen(list(db.scalars(select(TimeBlock))))
     im_blocker = any(von <= jetzt < bis for von, bis in fenster)
     aktive = [t for t in tasks if "aktiv" in t.tags]
     laeuft_noch = any(
@@ -261,38 +240,30 @@ def uebergabe_pruefen(db: Session, user: str) -> Task | None:
     naechster = wartende[0]
     _tag_anwenden(naechster, "aktiv")
     db.commit()
-    logger.info("Auto-aktiviert: Task %s (%s) für %s", naechster.id, naechster.titel, user)
+    logger.info("Auto-aktiviert: Task %s (%s)", naechster.id, naechster.titel)
     return naechster
 
 
 @router.post("/queue/tick", response_model=list[TaskOut])
-def queue_tick(
-    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> list[Task]:
+def queue_tick(db: Session = Depends(get_db)) -> list[Task]:
     """Übergabe prüfen (siehe uebergabe_pruefen) und die offene Task-Liste
     zurückgeben, wie GET /tasks. Läuft zusätzlich als Hintergrund-Schleife
     im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
-    uebergabe_pruefen(db, user)
+    uebergabe_pruefen(db)
     return list(
         db.scalars(
-            select(Task)
-            .where(Task.user_id == user, Task.erledigt_am.is_(None))
-            .order_by(Task.position)
+            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
         )
     )
 
 
 @router.post("/queue/feierabend", response_model=list[TaskOut])
-def feierabend(
-    db: Session = Depends(get_db), user: str = Depends(aktueller_user)
-) -> list[Task]:
+def feierabend(db: Session = Depends(get_db)) -> list[Task]:
     """Feierabend: alle aktiven Tasks wandern auf next, ihre aktiv-Phasen enden.
     Der automatische Statuswechsel bleibt danach still, bis wieder etwas aktiv ist."""
     tasks = list(
         db.scalars(
-            select(Task)
-            .where(Task.user_id == user, Task.erledigt_am.is_(None))
-            .order_by(Task.position)
+            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
         )
     )
     for task in tasks:
@@ -306,14 +277,10 @@ def feierabend(
 def queue_umsortieren(
     daten: QueueOrder,
     db: Session = Depends(get_db),
-    user: str = Depends(aktueller_user),
 ) -> list[Task]:
     """Nimmt die komplette Ziel-Reihenfolge entgegen (wie nach dem Drag & Drop)."""
     tasks = {
-        t.id: t
-        for t in db.scalars(
-            select(Task).where(Task.user_id == user, Task.erledigt_am.is_(None))
-        )
+        t.id: t for t in db.scalars(select(Task).where(Task.erledigt_am.is_(None)))
     }
     if set(daten.task_ids) != set(tasks) or len(daten.task_ids) != len(tasks):
         raise HTTPException(422, "task_ids muss jede offene Task-Id genau einmal enthalten")
