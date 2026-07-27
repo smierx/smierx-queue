@@ -27,7 +27,7 @@ export interface Task {
   geaendert_am: string;
   erledigt_am: string | null;
   aktiv_seit: string | null;
-  aktiv_phasen: { von: string; bis: string | null }[];
+  aktiv_phasen: { id: number | null; von: string; bis: string | null }[];
 }
 
 // Eine Phase aus GET /phasen: mit Task-Kontext, auch für Tasks, die

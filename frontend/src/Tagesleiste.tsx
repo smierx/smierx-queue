@@ -93,6 +93,7 @@ export function Tagesleiste({
   onChange,
   onTaskClick,
   onPhaseClick,
+  onPhaseNeu,
 }: {
   datum: string; // YYYY-MM-DD, der angezeigte Tag
   modus: LeistenModus;
@@ -103,6 +104,7 @@ export function Tagesleiste({
   onChange: () => void;
   onTaskClick: (task: Task) => void;
   onPhaseClick?: (phase: Phase) => void; // Vergangenheits-Editor, sonst Task-Detail
+  onPhaseNeu?: () => void; // "+ Phase" an vergangenen Tagen
 }) {
   const [form, setForm] = useState<FormDaten | null>(null);
   // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
@@ -539,6 +541,11 @@ export function Tagesleiste({
         {modus === "heute" && (
           <button type="button" className="spontan" onClick={spontanBlocker}>
             ⚡ Blocker jetzt
+          </button>
+        )}
+        {modus === "vergangen" && onPhaseNeu && (
+          <button type="button" className="sekundaer" onClick={onPhaseNeu}>
+            + Phase
           </button>
         )}
         <button

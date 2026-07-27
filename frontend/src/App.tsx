@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
 import { DateNav, datumLabel, heuteIso } from "./DateNav";
+import { PhaseModal } from "./PhaseModal";
 import { SchedulePanel } from "./SchedulePanel";
 import { Tagesleiste, type LeistenModus } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
@@ -50,6 +51,8 @@ export default function App() {
   const [neuerTitel, setNeuerTitel] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
   const [detail, setDetail] = useState<Task | null>(null);
+  // null = zu, { phase: null } = neue Phase nachtragen, sonst bearbeiten.
+  const [phaseModal, setPhaseModal] = useState<{ phase: Phase | null } | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [exportWoche, setExportWoche] = useState(aktuelleWoche());
 
@@ -185,6 +188,8 @@ export default function App() {
             geplante={queue}
             onChange={laden}
             onTaskClick={setDetail}
+            onPhaseClick={(phase) => setPhaseModal({ phase })}
+            onPhaseNeu={() => setPhaseModal({ phase: null })}
           />
         )}
       </section>
@@ -342,6 +347,14 @@ export default function App() {
       </section>
 
       {detail && <TaskDetail task={detail} onClose={() => setDetail(null)} onChange={laden} />}
+      {phaseModal && (
+        <PhaseModal
+          phase={phaseModal.phase}
+          datum={datum}
+          onClose={() => setPhaseModal(null)}
+          onChange={laden}
+        />
+      )}
     </div>
   );
 }

@@ -94,10 +94,12 @@ class Task(Base):
 
     @property
     def aktiv_phasen(self) -> list[dict]:
-        """Alle aktiv-Phasen als lokale Zeit: [{von, bis}]. bis=None heißt läuft noch.
-        Der Zeitstrahl zeichnet jede Phase als eigenen Balken."""
+        """Alle aktiv-Phasen als lokale Zeit: [{id, von, bis}]. bis=None heißt läuft
+        noch. Der Zeitstrahl zeichnet jede Phase als eigenen Balken, die Id
+        braucht das Nachtragen (PATCH/DELETE /phasen/{id})."""
         return [
             {
+                "id": p.id,
                 "von": _phasenzeit(p.von),
                 "bis": _phasenzeit(p.bis) if p.bis is not None else None,
             }

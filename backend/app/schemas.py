@@ -45,6 +45,7 @@ class ErledigtDaten(BaseModel):
 
 
 class AktivPhase(BaseModel):
+    id: int | None  # None nur bei noch nicht committeten Phasen
     von: datetime
     bis: datetime | None
 
