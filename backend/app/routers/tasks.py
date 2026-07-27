@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -15,7 +15,8 @@ from app.models import (
     TaskTag,
     TimeBlock,
 )
-from app.schemas import QueueOrder, TagEventOut, TaskCreate, TaskOut, TaskUpdate
+from app.rollover import rollover_ausfuehren
+from app.schemas import ErledigtDaten, QueueOrder, TagEventOut, TaskCreate, TaskOut, TaskUpdate
 
 router = APIRouter(tags=["tasks"])
 logger = logging.getLogger("smierx_queue.tasks")
@@ -23,6 +24,20 @@ logger = logging.getLogger("smierx_queue.tasks")
 
 def _jetzt_utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _utc_naiv(lokal: datetime) -> datetime:
+    """Lokale (naive) Zeit → UTC-naiv, wie _jetzt_utc sie speichert."""
+    return lokal.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _tages_ende_position(db: Session, tag: date) -> int:
+    max_position = db.scalar(
+        select(func.max(Task.position)).where(
+            Task.erledigt_am.is_(None), Task.geplant_am == tag
+        )
+    )
+    return (max_position or 0) + 1
 
 
 def _task_holen(db: Session, task_id: int) -> Task:
@@ -63,15 +78,23 @@ def _tag_anwenden(task: Task, tag: str) -> None:
 
 @router.get("/tasks", response_model=list[TaskOut])
 def tasks_auflisten(
+    datum: date | None = None,
     tag: str | None = None,
     erledigt: bool = False,
     db: Session = Depends(get_db),
 ) -> list[Task]:
+    """Offene Tasks eines Tages (Default heute), das Archiv (erledigt=true) ist global."""
     stmt = select(Task)
     if erledigt:
         stmt = stmt.where(Task.erledigt_am.is_not(None)).order_by(Task.erledigt_am.desc())
     else:
-        stmt = stmt.where(Task.erledigt_am.is_(None)).order_by(Task.position)
+        ziel = datum or date.today()
+        if ziel == date.today():
+            rollover_ausfuehren(db)
+        stmt = (
+            stmt.where(Task.erledigt_am.is_(None), Task.geplant_am == ziel)
+            .order_by(Task.position)
+        )
     if tag is not None:
         _tag_pruefen(tag)
         stmt = stmt.join(TaskTag).where(TaskTag.tag == tag)
@@ -83,11 +106,12 @@ def task_anlegen(
     daten: TaskCreate,
     db: Session = Depends(get_db),
 ) -> Task:
-    max_position = db.scalar(select(func.max(Task.position)))
+    geplant_am = daten.geplant_am or date.today()
     task = Task(
         titel=daten.titel,
         beschreibung=daten.beschreibung,
-        position=(max_position or 0) + 1,
+        geplant_am=geplant_am,
+        position=_tages_ende_position(db, geplant_am),
         dauer_minuten=daten.dauer_minuten,
     )
     task.tag_zeilen = [TaskTag(tag=t) for t in daten.tags]
@@ -118,6 +142,9 @@ def task_aendern(
         task.beschreibung = daten.beschreibung
     if daten.dauer_minuten is not None:
         task.dauer_minuten = daten.dauer_minuten
+    if daten.geplant_am is not None and daten.geplant_am != task.geplant_am:
+        task.geplant_am = daten.geplant_am
+        task.position = _tages_ende_position(db, daten.geplant_am)
     db.commit()
     db.refresh(task)
     return task
@@ -164,13 +191,19 @@ def tag_entfernen(
 
 
 @router.post("/tasks/{task_id}/erledigt", response_model=TaskOut)
-def task_erledigen(task_id: int, db: Session = Depends(get_db)) -> Task:
+def task_erledigen(
+    task_id: int,
+    daten: ErledigtDaten | None = None,
+    db: Session = Depends(get_db),
+) -> Task:
     """Task ins Archiv statt löschen. Läuft er gerade, endet die Phase
-    und das aktiv-Tag geht runter (Wiederöffnen startet ihn nicht von selbst)."""
+    und das aktiv-Tag geht runter (Wiederöffnen startet ihn nicht von selbst).
+    Ein Zeitpunkt im Body datiert das Erledigen fürs Nachtragen zurück."""
     task = _task_holen(db, task_id)
     if task.erledigt_am is None:
-        task.erledigt_am = _jetzt_utc()
-        _offene_phase_schliessen(task, datetime.now())
+        zeitpunkt = daten.zeitpunkt if daten and daten.zeitpunkt else datetime.now()
+        task.erledigt_am = _utc_naiv(zeitpunkt)
+        _offene_phase_schliessen(task, zeitpunkt)
         zeile = next((z for z in task.tag_zeilen if z.tag == "aktiv"), None)
         if zeile is not None:
             task.tag_zeilen.remove(zeile)
@@ -185,8 +218,8 @@ def task_wieder_oeffnen(task_id: int, db: Session = Depends(get_db)) -> Task:
     task = _task_holen(db, task_id)
     if task.erledigt_am is not None:
         task.erledigt_am = None
-        max_position = db.scalar(select(func.max(Task.position)))
-        task.position = (max_position or 0) + 1  # hinten wieder einreihen
+        task.geplant_am = date.today()
+        task.position = _tages_ende_position(db, task.geplant_am)  # hinten einreihen
         db.commit()
         db.refresh(task)
     return task
@@ -237,10 +270,13 @@ def uebergabe_pruefen(db: Session) -> Task | None:
     hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
     Feierabend), passiert nichts. Mitten in einem Blocker passiert nichts.
     Höchstens ein Wechsel pro Aufruf, geparkte Tasks (pausiert, holding, inaktiv)
-    bleiben liegen. Committet selbst, gibt den aktivierten Task zurück."""
+    bleiben liegen. Betrachtet nur die heutige Queue, vorgeplante Tage fasst der
+    Tick nie an. Committet selbst, gibt den aktivierten Task zurück."""
     tasks = list(
         db.scalars(
-            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
+            select(Task)
+            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .order_by(Task.position)
         )
     )
     jetzt = datetime.now()  # lokale Zeit, konsistent zu aktiv_seit und TimeBlocks
@@ -269,13 +305,16 @@ def uebergabe_pruefen(db: Session) -> Task | None:
 
 @router.post("/queue/tick", response_model=list[TaskOut])
 def queue_tick(db: Session = Depends(get_db)) -> list[Task]:
-    """Übergabe prüfen (siehe uebergabe_pruefen) und die offene Task-Liste
-    zurückgeben, wie GET /tasks. Läuft zusätzlich als Hintergrund-Schleife
-    im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
+    """Rollover fahren, Übergabe prüfen (siehe uebergabe_pruefen) und die heutige
+    Task-Liste zurückgeben, wie GET /tasks. Läuft zusätzlich als
+    Hintergrund-Schleife im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
+    rollover_ausfuehren(db)
     uebergabe_pruefen(db)
     return list(
         db.scalars(
-            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
+            select(Task)
+            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .order_by(Task.position)
         )
     )
 
@@ -286,7 +325,9 @@ def feierabend(db: Session = Depends(get_db)) -> list[Task]:
     Der automatische Statuswechsel bleibt danach still, bis wieder etwas aktiv ist."""
     tasks = list(
         db.scalars(
-            select(Task).where(Task.erledigt_am.is_(None)).order_by(Task.position)
+            select(Task)
+            .where(Task.erledigt_am.is_(None), Task.geplant_am == date.today())
+            .order_by(Task.position)
         )
     )
     for task in tasks:
@@ -301,12 +342,19 @@ def queue_umsortieren(
     daten: QueueOrder,
     db: Session = Depends(get_db),
 ) -> list[Task]:
-    """Nimmt die komplette Ziel-Reihenfolge entgegen (wie nach dem Drag & Drop)."""
+    """Nimmt die komplette Ziel-Reihenfolge eines Tages entgegen (wie nach dem
+    Drag & Drop), Default heute."""
+    ziel = daten.datum or date.today()
     tasks = {
-        t.id: t for t in db.scalars(select(Task).where(Task.erledigt_am.is_(None)))
+        t.id: t
+        for t in db.scalars(
+            select(Task).where(Task.erledigt_am.is_(None), Task.geplant_am == ziel)
+        )
     }
     if set(daten.task_ids) != set(tasks) or len(daten.task_ids) != len(tasks):
-        raise HTTPException(422, "task_ids muss jede offene Task-Id genau einmal enthalten")
+        raise HTTPException(
+            422, "task_ids muss jede offene Task-Id des Tages genau einmal enthalten"
+        )
     for position, task_id in enumerate(daten.task_ids, start=1):
         tasks[task_id].position = position
     db.commit()

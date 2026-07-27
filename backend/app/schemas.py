@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -26,6 +26,7 @@ class TaskCreate(BaseModel):
     beschreibung: str = ""
     tags: list[str] = []
     dauer_minuten: int = Field(default=60, ge=5, le=24 * 60)
+    geplant_am: date | None = None  # None = heute
 
     _tags = field_validator("tags")(_tags_pruefen)
 
@@ -34,6 +35,13 @@ class TaskUpdate(BaseModel):
     titel: str | None = Field(default=None, min_length=1, max_length=300)
     beschreibung: str | None = None
     dauer_minuten: int | None = Field(default=None, ge=5, le=24 * 60)
+    geplant_am: date | None = None  # verschiebt den Task ans Ende des Zieltags
+
+
+class ErledigtDaten(BaseModel):
+    """Optionaler Body fürs Erledigen: Zeitpunkt fürs Nachtragen (lokale Zeit)."""
+
+    zeitpunkt: datetime | None = None
 
 
 class AktivPhase(BaseModel):
@@ -47,6 +55,7 @@ class TaskOut(BaseModel):
     id: int
     titel: str
     beschreibung: str
+    geplant_am: date
     position: int
     dauer_minuten: int
     tags: list[str]
@@ -66,9 +75,10 @@ class TagEventOut(BaseModel):
 
 
 class QueueOrder(BaseModel):
-    """Komplette Ziel-Reihenfolge, wie sie nach dem Drag & Drop aussieht."""
+    """Komplette Ziel-Reihenfolge eines Tages, wie sie nach dem Drag & Drop aussieht."""
 
     task_ids: list[int] = Field(min_length=1)
+    datum: date | None = None  # None = heute
 
 
 # --- Termine & Blocker ---

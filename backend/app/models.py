@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -61,7 +62,10 @@ class Task(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     titel: Mapped[str] = mapped_column(String(300))
     beschreibung: Mapped[str] = mapped_column(Text, default="")
-    # Queue-Reihenfolge, klein = weiter oben. Reorder schreibt die Positionen neu.
+    # Der Tag, auf dem der Task in der Queue liegt. Invariante: jeder offene Task
+    # liegt auf genau einem Tag >= heute, der Rollover räumt die Vergangenheit.
+    geplant_am: Mapped[date] = mapped_column(Date, index=True, default=date.today)
+    # Queue-Reihenfolge innerhalb eines Tages, klein = weiter oben.
     position: Mapped[int] = mapped_column(Integer, index=True)
     # Geplante Dauer in Minuten, Default eine Stunde. Bestimmt die Balkenbreite im Zeitstrahl.
     dauer_minuten: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
