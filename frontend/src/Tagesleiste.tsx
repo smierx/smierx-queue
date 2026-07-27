@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
-import { BLOCK_TYPEN, type BlockTyp, type Capacity, type Task, type TimeBlock } from "./types";
+import {
+  BLOCK_TYPEN,
+  type BlockTyp,
+  type Capacity,
+  type Phase,
+  type Task,
+  type TimeBlock,
+} from "./types";
 
 const BLOCK_NAMEN: Record<BlockTyp, string> = {
   meeting: "Meeting",
@@ -13,6 +20,8 @@ const BLOCK_NAMEN: Record<BlockTyp, string> = {
 const EBENE_TOP = 56;
 const EBENE_HOEHE = 34;
 const TAG_ENDE = 24 * 60;
+
+export type LeistenModus = "heute" | "vergangen" | "zukunft";
 
 function minuten(iso: string): number {
   const d = new Date(iso);
@@ -36,14 +45,6 @@ function dauerText(minuten: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
-function heuteUm(zeit: string): string {
-  const jetzt = new Date();
-  const heute = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, "0")}-${String(
-    jetzt.getDate(),
-  ).padStart(2, "0")}`;
-  return `${heute}T${zeit}:00`;
-}
-
 function jetztZeit(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -63,16 +64,16 @@ interface FormDaten {
   bis: string;
 }
 
-// Zeitabschnitt in Minuten seit Mitternacht.
+// Zeitabschnitt in Minuten seit Mitternacht des angezeigten Tages.
 interface Seg {
   von: number;
   bis: number;
 }
 
-// Ein Balken im Zeitstrahl: eine aktiv-Phase oder ein geplanter Slot,
-// von Blocker-Fenstern in Segmente zerteilt.
+// Ein Balken im Zeitstrahl: eine Phase, von Blocker-Fenstern in Segmente zerteilt.
 interface Balken {
-  task: Task;
+  phase: Phase;
+  task: Task | null; // null, wenn der Task nicht (mehr) auf diesem Tag liegt
   segs: Seg[];
   art: "laeuft" | "vergangen";
   ueberzogen: boolean;
@@ -82,13 +83,26 @@ interface Balken {
   key: string;
 }
 
-export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange, onTaskClick }: {
+export function Tagesleiste({
+  datum,
+  modus,
+  kapazitaet,
+  phasen,
+  aktive,
+  geplante,
+  onChange,
+  onTaskClick,
+  onPhaseClick,
+}: {
+  datum: string; // YYYY-MM-DD, der angezeigte Tag
+  modus: LeistenModus;
   kapazitaet: Capacity;
+  phasen: Phase[];
   aktive: Task[];
   geplante: Task[];
-  erledigte: Task[];
   onChange: () => void;
   onTaskClick: (task: Task) => void;
+  onPhaseClick?: (phase: Phase) => void; // Vergangenheits-Editor, sonst Task-Detail
 }) {
   const [form, setForm] = useState<FormDaten | null>(null);
   // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
@@ -113,15 +127,20 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
   // der Live-Wert weg. Nicht mitten im Ziehen (Poll alle 30s).
   useEffect(() => {
     if (!resize.current) setResizeDauer(null);
-  }, [aktive, geplante, erledigte]);
+  }, [aktive, geplante, phasen]);
 
   const effektiveDauer = (t: Task) =>
     resizeDauer?.id === t.id ? resizeDauer.dauer : t.dauer_minuten;
 
   const jetzt = new Date();
   const jetztMin = jetzt.getHours() * 60 + jetzt.getMinutes();
-  const heuteStart = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate());
-  const minAbHeute = (d: Date) => (d.getTime() - heuteStart.getTime()) / 60_000;
+  const tagStart = new Date(`${datum}T00:00:00`);
+  const minAbTag = (d: Date) => (d.getTime() - tagStart.getTime()) / 60_000;
+  const tagesTasks = [...aktive, ...geplante];
+
+  function amTagUm(zeit: string): string {
+    return `${datum}T${zeit}:00`;
+  }
 
   // Blocker und Meetings als sortierte, überlappungsfreie Fenster. Sie zählen
   // nicht als Arbeitszeit und zerteilen alle Task-Balken.
@@ -171,33 +190,34 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
     return segs;
   }
 
-  // Jede aktiv-Phase von heute bleibt als Balken stehen, auch nach Pausieren
-  // oder Erledigen. Wird ein Task wieder aktiv, kommt ein neuer Balken dazu.
+  // Die Balken kommen aus den Phasen des Tages (GET /phasen). Phasen über
+  // Mitternacht werden auf den Tag geclippt.
   const balken: Balken[] = [];
-  for (const t of [...aktive, ...geplante, ...erledigte]) {
-    t.aktiv_phasen.forEach((phase, i) => {
-      const vonMin = Math.max(0, minAbHeute(new Date(phase.von)));
-      if (vonMin >= TAG_ENDE) return;
-      if (phase.bis === null) {
-        // Läuft noch: Balken über die geplante Dauer, Blocker schieben das Ende.
-        const { segs, ende } = freieSegmente(vonMin, effektiveDauer(t));
-        const basisEnde =
-          resizeDauer?.id === t.id ? freieSegmente(vonMin, t.dauer_minuten).ende : ende;
-        balken.push({
-          task: t, segs, art: "laeuft", ueberzogen: ende <= jetztMin,
-          ende, basisEnde, ebene: 0, key: `t${t.id}-${i}`,
-        });
-      } else {
-        const bisMin = Math.min(TAG_ENDE, minAbHeute(new Date(phase.bis)));
-        if (bisMin <= 0) return; // Phase von gestern oder früher
-        const segs = zerschneide(vonMin, Math.max(bisMin, vonMin + 2));
-        if (segs.length === 0) return; // lag komplett in einem Blocker
-        balken.push({
-          task: t, segs, art: "vergangen", ueberzogen: false,
-          ende: bisMin, basisEnde: bisMin, ebene: 0, key: `t${t.id}-${i}`,
-        });
-      }
-    });
+  for (const phase of phasen) {
+    const task = tagesTasks.find((t) => t.id === phase.task_id) ?? null;
+    const vonMin = Math.max(0, minAbTag(new Date(phase.von)));
+    if (vonMin >= TAG_ENDE) continue;
+    if (phase.bis === null) {
+      // Läuft noch: nur heute möglich. Balken über die geplante Dauer.
+      if (modus !== "heute") continue;
+      const dauer = task ? effektiveDauer(task) : 60;
+      const { segs, ende } = freieSegmente(vonMin, dauer);
+      const basisEnde =
+        task && resizeDauer?.id === task.id ? freieSegmente(vonMin, task.dauer_minuten).ende : ende;
+      balken.push({
+        phase, task, segs, art: "laeuft", ueberzogen: ende <= jetztMin,
+        ende, basisEnde, ebene: 0, key: `p${phase.id}`,
+      });
+    } else {
+      const bisMin = Math.min(TAG_ENDE, minAbTag(new Date(phase.bis)));
+      if (bisMin <= 0) continue; // Phase liegt vor dem Tag
+      const segs = zerschneide(vonMin, Math.max(bisMin, vonMin + 2));
+      if (segs.length === 0) continue; // lag komplett in einem Blocker
+      balken.push({
+        phase, task, segs, art: "vergangen", ueberzogen: false,
+        ende: bisMin, basisEnde: bisMin, ebene: 0, key: `p${phase.id}`,
+      });
+    }
   }
   // Ebenen-Zuordnung: überlappende Balken rutschen eine Ebene tiefer.
   balken.sort(
@@ -214,18 +234,28 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
     ebenenEnden[ebene] = b.segs[b.segs.length - 1].bis;
   }
 
-  // Warteliste: alle Queue-Tasks nacheinander in genau einer Ebene, hinter
-  // jetzt, hinter den laufenden Tasks und hinter allen Blockern.
-  let cursor = Math.max(
-    jetztMin,
-    ...balken.filter((b) => b.art === "laeuft").map((b) => b.ende),
-  );
+  // Arbeitsfenster-Beginn (für die Warteliste an Zukunftstagen).
+  let fensterStart = 7 * 60;
+  if (kapazitaet.fenster_von) {
+    const [h, m] = kapazitaet.fenster_von.split(":").map(Number);
+    fensterStart = h * 60 + m;
+  }
+
+  // Warteliste: alle Queue-Tasks nacheinander in genau einer Ebene. Heute hinter
+  // jetzt, den laufenden Tasks und allen Blockern; an Zukunftstagen ab dem
+  // Arbeitsfenster-Beginn. Vergangene Tage haben keine Warteliste.
   const geplant: { task: Task; segs: Seg[] }[] = [];
-  for (const t of geplante) {
-    if (cursor >= TAG_ENDE) break; // Rest liegt hinter Mitternacht, heute unsichtbar
-    const { segs, ende } = freieSegmente(cursor, effektiveDauer(t));
-    geplant.push({ task: t, segs });
-    cursor = ende;
+  if (modus !== "vergangen") {
+    let cursor =
+      modus === "heute"
+        ? Math.max(jetztMin, ...balken.filter((b) => b.art === "laeuft").map((b) => b.ende))
+        : fensterStart;
+    for (const t of geplante) {
+      if (cursor >= TAG_ENDE) break; // Rest liegt hinter Mitternacht, unsichtbar
+      const { segs, ende } = freieSegmente(cursor, effektiveDauer(t));
+      geplant.push({ task: t, segs });
+      cursor = ende;
+    }
   }
   const geplantEbene = ebenenEnden.length;
   const achseHoehe = Math.max(
@@ -249,10 +279,12 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
   }
   for (const b of balken) {
     if (b.segs[0].von > 0) autoStart = Math.min(autoStart, b.segs[0].von);
-    autoEnde = Math.max(autoEnde, Math.min(b.basisEnde, TAG_ENDE), jetztMin);
+    autoEnde = Math.max(autoEnde, Math.min(b.basisEnde, TAG_ENDE));
   }
-  // Geplante starten frühestens jetzt, also mindestens bis dahin zeigen.
-  if (geplant.length > 0) autoEnde = Math.max(autoEnde, jetztMin);
+  if (modus === "heute") autoEnde = Math.max(autoEnde, jetztMin);
+  for (const g of geplant) {
+    autoEnde = Math.max(autoEnde, Math.min(g.segs[g.segs.length - 1].bis, TAG_ENDE));
+  }
   autoStart = Math.floor(autoStart / 60) * 60;
   autoEnde = Math.ceil(autoEnde / 60) * 60;
   const spanne = autoEnde - autoStart;
@@ -362,14 +394,21 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
     );
   }
 
+  function balkenKlick(b: Balken) {
+    if (klickSperre.current) return;
+    if (modus === "vergangen" && onPhaseClick) onPhaseClick(b.phase);
+    else if (b.task) onTaskClick(b.task);
+    else if (onPhaseClick) onPhaseClick(b.phase); // Task liegt woanders, Phase editieren
+  }
+
   async function spontanBlocker() {
     // Ein Klick: Blocker ab jetzt für 30 Minuten. Details danach anpassbar.
     const von = jetztZeit();
     const block = await api.timeblockAnlegen({
       titel: "Unterbrechung",
       typ: "blocker",
-      start: heuteUm(von),
-      ende: heuteUm(zeitPlus(von, 30)),
+      start: amTagUm(von),
+      ende: amTagUm(zeitPlus(von, 30)),
     });
     onChange();
     bearbeiten(block);
@@ -391,8 +430,8 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
     const daten = {
       titel: form.titel.trim(),
       typ: form.typ,
-      start: heuteUm(form.von),
-      ende: heuteUm(form.bis),
+      start: amTagUm(form.von),
+      ende: amTagUm(form.bis),
     };
     if (form.id === null) await api.timeblockAnlegen(daten);
     else await api.timeblockAendern(form.id, daten);
@@ -409,7 +448,7 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
   }
 
   return (
-    <div className="tagesleiste">
+    <div className={`tagesleiste ${modus}`}>
       <div
         ref={achseRef}
         className="achse"
@@ -452,7 +491,9 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
             if (!pos) return null;
             const info =
               b.art === "laeuft"
-                ? `läuft seit ${alsUhr(b.segs[0].von)}, geplant ${dauerText(effektiveDauer(b.task))}`
+                ? `läuft seit ${alsUhr(b.segs[0].von)}, geplant ${dauerText(
+                    b.task ? effektiveDauer(b.task) : 60,
+                  )}`
                 : `war aktiv ${alsUhr(b.segs[0].von)}–${alsUhr(b.ende)}`;
             return (
               <button
@@ -462,11 +503,11 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
                   b.ueberzogen ? "ueberzogen" : ""
                 }`}
                 style={{ ...pos, top: EBENE_TOP + b.ebene * EBENE_HOEHE }}
-                title={`${b.task.titel} – ${info}`}
-                onClick={() => !klickSperre.current && onTaskClick(b.task)}
+                title={`${b.phase.titel} – ${info}`}
+                onClick={() => balkenKlick(b)}
               >
-                {b.task.titel}
-                {b.art === "laeuft" && i === b.segs.length - 1 && resizeGriff(b.task)}
+                {b.phase.titel}
+                {b.art === "laeuft" && b.task && i === b.segs.length - 1 && resizeGriff(b.task)}
               </button>
             );
           }),
@@ -490,14 +531,16 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
             );
           }),
         )}
-        {jetztMin >= viewStart && jetztMin <= viewEnde && (
+        {modus === "heute" && jetztMin >= viewStart && jetztMin <= viewEnde && (
           <div className="jetzt" style={{ left: `${((jetztMin - viewStart) / spanne) * 100}%` }} />
         )}
       </div>
       <div className="leiste-fuss">
-        <button type="button" className="spontan" onClick={spontanBlocker}>
-          ⚡ Blocker jetzt
-        </button>
+        {modus === "heute" && (
+          <button type="button" className="spontan" onClick={spontanBlocker}>
+            ⚡ Blocker jetzt
+          </button>
+        )}
         <button
           type="button"
           className="sekundaer"
@@ -569,7 +612,7 @@ export function Tagesleiste({ kapazitaet, aktive, geplante, erledigte, onChange,
                     onChange={(e) => setForm({ ...form, bis: e.target.value })}
                   />
                 </label>
-                {form.id !== null && (
+                {form.id !== null && modus === "heute" && (
                   <button
                     type="button"
                     className="sekundaer"

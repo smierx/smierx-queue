@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/schedulepanel.tsx","./src/tagesleiste.tsx","./src/taskdetail.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./vite.config.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/datenav.tsx","./src/schedulepanel.tsx","./src/tagesleiste.tsx","./src/taskdetail.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./vite.config.ts"],"version":"5.9.3"}

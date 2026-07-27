@@ -256,31 +256,23 @@ h2 {
   padding: 6px 16px; font: inherit; font-weight: 600; cursor: pointer;
 }
 
-/* GitLab-Panel */
 .aufklappen {
   background: none; border: none; font: inherit; color: inherit;
   text-transform: inherit; letter-spacing: inherit; cursor: pointer; padding: 0;
 }
-.gitlab-panel {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
-  padding: 14px 16px;
+
+/* Datumsnavigation */
+.date-nav {
+  display: inline-flex; gap: 6px; align-items: center; margin-left: 12px;
+  text-transform: none; letter-spacing: 0; font-weight: 400;
 }
-.gitlab-panel form { display: flex; gap: 8px; flex-wrap: wrap; }
-.gitlab-panel input {
-  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
-  font: inherit; flex: 1; min-width: 160px;
+.date-nav input[type="date"] {
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+  font: inherit; font-size: 0.85rem; background: var(--surface); color: inherit;
 }
-.gitlab-panel button[type="submit"] {
-  background: var(--accent); color: #fff; border: none; border-radius: 6px;
-  padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer;
-}
-.sync-ergebnis { font-size: 0.85rem; color: var(--muted); margin-bottom: 0; }
-.sync-log {
-  list-style: none; padding: 10px 0 0; margin: 10px 0 0;
-  border-top: 1px solid var(--line);
-  font-size: 0.78rem; color: var(--muted);
-  display: flex; flex-direction: column; gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
+
+/* Vergangene und geplante Tage: Achse leicht gedämpft, keine Jetzt-Linie */
+.tagesleiste.vergangen .achse { filter: saturate(0.75); background: var(--surface); }
+.tagesleiste.zukunft .achse { background: var(--surface); }
 
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

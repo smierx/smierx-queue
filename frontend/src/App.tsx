@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { DateNav, datumLabel, heuteIso } from "./DateNav";
 import { SchedulePanel } from "./SchedulePanel";
-import { Tagesleiste } from "./Tagesleiste";
+import { Tagesleiste, type LeistenModus } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
-import { ALLE_TAGS, type Capacity, type Tag, type Task } from "./types";
+import { ALLE_TAGS, type Capacity, type Phase, type Tag, type Task } from "./types";
 
 function minutenAlsText(minuten: number): string {
   const h = Math.floor(minuten / 60);
@@ -40,7 +41,9 @@ function TagChips({ task, onToggle }: { task: Task; onToggle: (tag: Tag) => void
 }
 
 export default function App() {
+  const [datum, setDatum] = useState(heuteIso());
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [phasen, setPhasen] = useState<Phase[]>([]);
   const [erledigte, setErledigte] = useState<Task[]>([]);
   const [archivOffen, setArchivOffen] = useState(false);
   const [kapazitaet, setKapazitaet] = useState<Capacity | null>(null);
@@ -50,19 +53,30 @@ export default function App() {
   const [dragId, setDragId] = useState<number | null>(null);
   const [exportWoche, setExportWoche] = useState(aktuelleWoche());
 
+  const istHeute = datum === heuteIso();
+  const modus: LeistenModus = istHeute ? "heute" : datum < heuteIso() ? "vergangen" : "zukunft";
+
   const laden = useCallback(async () => {
     try {
-      // Der Tick übernimmt den automatischen Statuswechsel und liefert die Liste.
-      // Erledigte braucht der Zeitstrahl immer: ihre aktiv-Phasen bleiben stehen.
-      const [t, k, e] = await Promise.all([
-        api.queueTick(),
-        api.kapazitaet(),
-        api.tasksErledigt(),
+      // Heute übernimmt der Tick Rollover und Statuswechsel und liefert die
+      // Liste, andere Tage werden nur gelesen. Die Phasen füttern den Zeitstrahl.
+      const [t, k, p] = await Promise.all([
+        datum === heuteIso() ? api.queueTick() : api.tasks(datum),
+        api.kapazitaet(datum),
+        api.phasen(datum),
       ]);
       setTasks(t);
       setKapazitaet(k);
-      setErledigte(e);
+      setPhasen(p);
       setFehler(null);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : String(e));
+    }
+  }, [datum]);
+
+  const ladenArchiv = useCallback(async () => {
+    try {
+      setErledigte(await api.tasksErledigt());
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
     }
@@ -70,15 +84,20 @@ export default function App() {
 
   useEffect(() => {
     laden();
-    // Polling hält Jetzt-Linie und automatischen Statuswechsel am Laufen.
+    if (!istHeute) return;
+    // Polling hält Jetzt-Linie und automatischen Statuswechsel am Laufen, nur heute.
     const timer = setInterval(laden, 30_000);
     return () => clearInterval(timer);
-  }, [laden]);
+  }, [laden, istHeute]);
+
+  useEffect(() => {
+    if (archivOffen) ladenArchiv();
+  }, [archivOffen, ladenArchiv]);
 
   async function anlegen(event: React.FormEvent) {
     event.preventDefault();
     if (!neuerTitel.trim()) return;
-    await api.taskAnlegen(neuerTitel.trim());
+    await api.taskAnlegen(neuerTitel.trim(), istHeute ? undefined : datum);
     setNeuerTitel("");
     laden();
   }
@@ -92,6 +111,7 @@ export default function App() {
   async function erledigen(task: Task) {
     await api.erledigen(task.id);
     laden();
+    if (archivOffen) ladenArchiv();
   }
 
   async function exportieren() {
@@ -122,7 +142,7 @@ export default function App() {
     const angezeigt = queue.map((t) => t.id).filter((id) => id !== dragId);
     angezeigt.splice(angezeigt.indexOf(zielId), 0, dragId);
     setDragId(null);
-    await api.umsortieren([...aktive.map((t) => t.id), ...angezeigt]);
+    await api.umsortieren([...aktive.map((t) => t.id), ...angezeigt], datum);
     laden();
   }
 
@@ -134,7 +154,7 @@ export default function App() {
         </h1>
         {kapazitaet && (
           <div className="kapazitaet">
-            heute {minutenAlsText(kapazitaet.frei_minuten)} frei
+            {datumLabel(datum)} {minutenAlsText(kapazitaet.frei_minuten)} frei
             <small>
               {minutenAlsText(kapazitaet.arbeitszeit_minuten)} Arbeitszeit,{" "}
               {minutenAlsText(kapazitaet.geblockt_minuten)} geblockt
@@ -146,13 +166,23 @@ export default function App() {
       {fehler && <p className="fehler">API nicht erreichbar: {fehler}</p>}
 
       <section>
-        <h2>Heute</h2>
+        <h2>
+          {datumLabel(datum)}
+          <DateNav datum={datum} onChange={setDatum} />
+        </h2>
+        {modus === "vergangen" && (
+          <p className="hint">
+            Vergangener Tag: Phasen im Zeitstrahl anklicken zum Korrigieren, Blocker nachtragen.
+          </p>
+        )}
         {kapazitaet && (
           <Tagesleiste
+            datum={datum}
+            modus={modus}
             kapazitaet={kapazitaet}
+            phasen={phasen}
             aktive={aktive}
             geplante={queue}
-            erledigte={erledigte}
             onChange={laden}
             onTaskClick={setDetail}
           />
@@ -161,48 +191,58 @@ export default function App() {
 
       <SchedulePanel onChange={laden} />
 
-      <section>
-        <h2>
-          Läuft gerade
-          {aktive.length > 0 && (
-            <button
-              type="button"
-              className="sekundaer h2-aktion"
-              title="Alle aktiven Tasks auf next setzen"
-              onClick={() => api.feierabend().then(laden)}
-            >
-              🌙 Feierabend
-            </button>
-          )}
-        </h2>
-        {aktive.length === 0 && <p className="leer">Nichts aktiv. Zieh dir was aus der Queue.</p>}
-        {aktive.map((task) => (
-          <article
-            key={task.id}
-            className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}
-          >
-            <div className="karten-kopf">
-              <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
-                {task.titel}
-              </button>
+      {istHeute && (
+        <section>
+          <h2>
+            Läuft gerade
+            {aktive.length > 0 && (
               <button
                 type="button"
-                className="fertig"
-                title="Erledigt"
-                onClick={() => erledigen(task)}
+                className="sekundaer h2-aktion"
+                title="Alle aktiven Tasks auf next setzen"
+                onClick={() => api.feierabend().then(laden)}
               >
-                ✓
+                🌙 Feierabend
               </button>
-            </div>
-            <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
-          </article>
-        ))}
-      </section>
+            )}
+          </h2>
+          {aktive.length === 0 && (
+            <p className="leer">Nichts aktiv. Zieh dir was aus der Queue.</p>
+          )}
+          {aktive.map((task) => (
+            <article
+              key={task.id}
+              className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}
+            >
+              <div className="karten-kopf">
+                <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+                  {task.titel}
+                </button>
+                <button
+                  type="button"
+                  className="fertig"
+                  title="Erledigt"
+                  onClick={() => erledigen(task)}
+                >
+                  ✓
+                </button>
+              </div>
+              <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
+            </article>
+          ))}
+        </section>
+      )}
 
       <section>
         <h2>
-          Queue <span className="hint">next zuerst · ziehen zum Umsortieren</span>
+          Queue für {datumLabel(datum)}{" "}
+          <span className="hint">next zuerst · ziehen zum Umsortieren</span>
         </h2>
+        {queue.length === 0 && !istHeute && (
+          <p className="leer">
+            {modus === "zukunft" ? "Noch nichts geplant für diesen Tag." : "Hier lag nichts mehr."}
+          </p>
+        )}
         {queue.map((task) => (
           <article
             key={task.id}
@@ -234,7 +274,7 @@ export default function App() {
           <input
             value={neuerTitel}
             onChange={(e) => setNeuerTitel(e.target.value)}
-            placeholder="Neuer Task…"
+            placeholder={istHeute ? "Neuer Task…" : `Neuer Task für ${datumLabel(datum)}…`}
           />
           <button type="submit">In die Queue</button>
         </form>
@@ -259,7 +299,12 @@ export default function App() {
                 <button
                   type="button"
                   className="sekundaer"
-                  onClick={() => api.wiederOeffnen(task.id).then(laden)}
+                  onClick={() =>
+                    api.wiederOeffnen(task.id).then(() => {
+                      laden();
+                      ladenArchiv();
+                    })
+                  }
                 >
                   Wieder öffnen
                 </button>
@@ -267,7 +312,12 @@ export default function App() {
                   type="button"
                   className="loeschen"
                   aria-label="endgültig löschen"
-                  onClick={() => api.taskLoeschen(task.id).then(laden)}
+                  onClick={() =>
+                    api.taskLoeschen(task.id).then(() => {
+                      laden();
+                      ladenArchiv();
+                    })
+                  }
                 >
                   ✕
                 </button>

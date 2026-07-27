@@ -19,6 +19,7 @@ export interface Task {
   id: number;
   titel: string;
   beschreibung: string;
+  geplant_am: string;
   position: number;
   dauer_minuten: number;
   tags: Tag[];
@@ -27,6 +28,17 @@ export interface Task {
   erledigt_am: string | null;
   aktiv_seit: string | null;
   aktiv_phasen: { von: string; bis: string | null }[];
+}
+
+// Eine Phase aus GET /phasen: mit Task-Kontext, auch für Tasks, die
+// inzwischen auf anderen Tagen oder im Archiv liegen.
+export interface Phase {
+  id: number;
+  task_id: number;
+  titel: string;
+  tags: Tag[];
+  von: string;
+  bis: string | null;
 }
 
 export interface Schedule {
