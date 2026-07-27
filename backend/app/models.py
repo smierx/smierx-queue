@@ -39,6 +39,10 @@ ZUSTAND_TAGS = {"aktiv", "next", "pausiert", "holding", "inaktiv"}
 TIMEBLOCK_TYPEN = {"meeting", "blocker", "support"}
 SCHEDULE_MODI = {"stunden", "feste_zeiten"}
 
+# Zwei komplette Welten in einer App: Tasks, Blocker und Arbeitszeit-Modell
+# gelten je Bereich, der Schalter im Frontend wechselt alles auf einmal.
+BEREICHE = {"arbeit", "privat"}
+
 
 def _lokal(zeitpunkt: datetime) -> datetime:
     """DB-Defaults sind UTC (SQLite naiv, Postgres aware) → lokale, naive Zeit,
@@ -62,10 +66,13 @@ class Task(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     titel: Mapped[str] = mapped_column(String(300))
     beschreibung: Mapped[str] = mapped_column(Text, default="")
+    bereich: Mapped[str] = mapped_column(
+        String(10), index=True, default="arbeit", server_default="arbeit"
+    )
     # Der Tag, auf dem der Task in der Queue liegt. Invariante: jeder offene Task
     # liegt auf genau einem Tag >= heute, der Rollover räumt die Vergangenheit.
     geplant_am: Mapped[date] = mapped_column(Date, index=True, default=date.today)
-    # Queue-Reihenfolge innerhalb eines Tages, klein = weiter oben.
+    # Queue-Reihenfolge innerhalb eines Tages und Bereichs, klein = weiter oben.
     position: Mapped[int] = mapped_column(Integer, index=True)
     # Geplante Dauer in Minuten, Default eine Stunde. Bestimmt die Balkenbreite im Zeitstrahl.
     dauer_minuten: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
@@ -159,6 +166,9 @@ class TimeBlock(Base):
     __tablename__ = "time_blocks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    bereich: Mapped[str] = mapped_column(
+        String(10), index=True, default="arbeit", server_default="arbeit"
+    )
     titel: Mapped[str] = mapped_column(String(300))
     typ: Mapped[str] = mapped_column(String(20))  # meeting | blocker
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -169,7 +179,7 @@ class TimeBlock(Base):
 
 
 class WorkSchedule(Base):
-    """Arbeitszeit-Modell, genau eine Zeile.
+    """Arbeitszeit-Modell, genau eine Zeile pro Bereich.
 
     modus "stunden": nur stunden_pro_tag zählt (Lage egal).
     modus "feste_zeiten": zeiten hält pro Wochentag ["HH:MM", "HH:MM"] oder null (frei).
@@ -178,6 +188,9 @@ class WorkSchedule(Base):
     __tablename__ = "work_schedules"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    bereich: Mapped[str] = mapped_column(
+        String(10), unique=True, default="arbeit", server_default="arbeit"
+    )
     modus: Mapped[str] = mapped_column(String(20), default="stunden")
     stunden_pro_tag: Mapped[float] = mapped_column(Float, default=8.0)
     # {"mo": ["08:00", "16:30"], ..., "sa": null, "so": null}
