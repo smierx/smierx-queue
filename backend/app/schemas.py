@@ -157,41 +157,6 @@ class ScheduleOut(BaseModel):
     zeiten: dict[str, list[str] | None] | None
 
 
-# --- GitLab ---
-
-
-class ConnectionUpdate(BaseModel):
-    url: str = Field(min_length=8, max_length=300)  # https://…
-    token: str = Field(default="", max_length=300)  # leer = bestehenden behalten
-    projekt_ids: list[int] = []
-
-
-class ConnectionOut(BaseModel):
-    """Der Token geht nie wieder raus."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    url: str
-    projekt_ids: list[int]
-
-
-class SyncLogOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    zeitpunkt: datetime
-    aktion: str
-    details: dict
-
-
-class SyncResult(BaseModel):
-    importiert: int
-    aktualisiert_lokal: int
-    gepusht: int
-    geschlossen: int
-    wieder_geoeffnet: int
-    konflikte: list[str]
-
-
 # --- Wochen-Export ---
 
 

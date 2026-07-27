@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
-import { GitLabPanel } from "./GitLabPanel";
 import { SchedulePanel } from "./SchedulePanel";
 import { Tagesleiste } from "./Tagesleiste";
 import { TaskDetail } from "./TaskDetail";
@@ -276,8 +275,6 @@ export default function App() {
             ))
           ))}
       </section>
-
-      <GitLabPanel onSynced={laden} />
 
       <section>
         <h2>Export</h2>

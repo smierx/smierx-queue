@@ -10,9 +10,6 @@ from app.database import get_db
 from app.models import (
     VALID_TAGS,
     ZUSTAND_TAGS,
-    GitlabConnection,
-    GitlabLink,
-    SyncLog,
     TagEvent,
     Task,
     TaskTag,
@@ -26,38 +23,6 @@ logger = logging.getLogger("smierx_queue.tasks")
 
 def _jetzt_utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _issue_status_setzen(db: Session, task: Task, state_event: str) -> None:
-    """Verlinktes GitLab-Issue schließen/öffnen. Fehler blockieren das Erledigen nicht."""
-    link = db.scalar(select(GitlabLink).where(GitlabLink.task_id == task.id))
-    if link is None:
-        return
-    verbindung = db.scalar(
-        select(GitlabConnection).where(GitlabConnection.user_id == task.user_id)
-    )
-    if verbindung is None:
-        return
-    from app.routers.gitlab import client_fuer
-
-    details = {"projekt_id": link.projekt_id, "issue_iid": link.issue_iid, "task_id": task.id}
-    try:
-        client_fuer(verbindung).issue_aktualisieren(
-            link.projekt_id, link.issue_iid, state_event=state_event
-        )
-        details["ok"] = True
-        logger.info(
-            "Issue %s#%s: %s (Task %s)", link.projekt_id, link.issue_iid, state_event, task.id
-        )
-    except Exception as fehler:
-        details["ok"] = False
-        details["fehler"] = str(fehler)
-        logger.warning(
-            "Issue %s#%s konnte nicht per %s aktualisiert werden: %s",
-            link.projekt_id, link.issue_iid, state_event, fehler,
-        )
-    aktion = "issue_close" if state_event == "close" else "issue_reopen"
-    db.add(SyncLog(user_id=task.user_id, aktion=aktion, details=details))
 
 
 def _task_holen(db: Session, task_id: int, user: str) -> Task:
@@ -196,11 +161,10 @@ def tag_entfernen(
 def task_erledigen(
     task_id: int, db: Session = Depends(get_db), user: str = Depends(aktueller_user)
 ) -> Task:
-    """Task ins Archiv statt löschen. Ein verlinktes GitLab-Issue wird geschlossen."""
+    """Task ins Archiv statt löschen."""
     task = _task_holen(db, task_id, user)
     if task.erledigt_am is None:
         task.erledigt_am = _jetzt_utc()
-        _issue_status_setzen(db, task, "close")
         db.commit()
         db.refresh(task)
     return task
@@ -215,7 +179,6 @@ def task_wieder_oeffnen(
         task.erledigt_am = None
         max_position = db.scalar(select(func.max(Task.position)).where(Task.user_id == user))
         task.position = (max_position or 0) + 1  # hinten wieder einreihen
-        _issue_status_setzen(db, task, "reopen")
         db.commit()
         db.refresh(task)
     return task

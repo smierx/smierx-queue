@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import export, gitlab, schedule, tasks, timeblocks
+from app.routers import export, schedule, tasks, timeblocks
 from app.tick import tick_schleife
 
 # Uvicorn konfiguriert nur seine eigenen Logger. Ohne das hier landen die
@@ -45,7 +45,6 @@ app.add_middleware(
 app.include_router(tasks.router, prefix="/api")
 app.include_router(timeblocks.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
-app.include_router(gitlab.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 
 

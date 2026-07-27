@@ -1,9 +1,6 @@
 import type {
   Capacity,
-  GitlabConnection,
   Schedule,
-  SyncLogEintrag,
-  SyncResult,
   Tag,
   TagEvent,
   Task,
@@ -60,14 +57,6 @@ export const api = {
   schedule: () => request<Schedule>("/schedule"),
   scheduleSetzen: (daten: Schedule) =>
     request<Schedule>("/schedule", { method: "PUT", body: JSON.stringify(daten) }),
-  gitlabConnection: () => request<GitlabConnection>("/gitlab/connection"),
-  gitlabVerbinden: (daten: GitlabConnection & { token: string }) =>
-    request<GitlabConnection>("/gitlab/connection", {
-      method: "PUT",
-      body: JSON.stringify(daten),
-    }),
-  gitlabSync: () => request<SyncResult>("/gitlab/sync", { method: "POST" }),
-  gitlabLog: () => request<SyncLogEintrag[]>("/gitlab/log?limit=20"),
   // Wochen-Export als JSON-Objekt, der Download passiert im Aufrufer.
   exportWoche: (woche: string) => request<unknown>(`/export?woche=${woche}`),
 };
