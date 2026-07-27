@@ -81,6 +81,47 @@ class QueueOrder(BaseModel):
     datum: date | None = None  # None = heute
 
 
+# --- Phasen (Nachtragen) ---
+
+
+class PhaseCreate(BaseModel):
+    """Nachgetragene Phase, immer geschlossen. Offene entstehen nur über das Tag-System."""
+
+    von: datetime
+    bis: datetime
+
+    @model_validator(mode="after")
+    def zeitraum_pruefen(self) -> "PhaseCreate":
+        if self.bis <= self.von:
+            raise ValueError("bis muss nach von liegen")
+        return self
+
+
+class PhaseUpdate(BaseModel):
+    von: datetime | None = None
+    bis: datetime | None = None  # eine offene Phase schließen ist erlaubt, öffnen nicht
+
+
+class PhaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    von: datetime
+    bis: datetime | None
+
+
+class TagesPhaseOut(BaseModel):
+    """Phase mit Task-Kontext für die Tages-Timeline."""
+
+    id: int
+    task_id: int
+    titel: str
+    tags: list[str]
+    von: datetime
+    bis: datetime | None
+
+
 # --- Termine & Blocker ---
 
 
