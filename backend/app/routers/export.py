@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Task, TimeBlock, _lokal
 from app.routers.tasks import _fenster_zusammenfassen
-from app.schemas import ExportBlock, ExportErledigt, ExportOut, ExportPhase, ExportSummary
+from app.schemas import (
+    Bereich,
+    ExportBlock,
+    ExportErledigt,
+    ExportOut,
+    ExportPhase,
+    ExportSummary,
+)
 
 router = APIRouter(tags=["export"])
 
@@ -50,15 +57,17 @@ def _minuten(delta: timedelta) -> int:
 @router.get("/export", response_model=ExportOut)
 def export_woche(
     woche: str | None = None,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> ExportOut:
-    """Wochen-Export als JSON: alle aktiv-Phasen (Arbeitszeit abzüglich Blocker),
-    erledigte Tasks und Blocker der Woche. Ohne Parameter die aktuelle Woche."""
+    """Wochen-Export eines Bereichs als JSON: alle aktiv-Phasen (Arbeitszeit
+    abzüglich Blocker), erledigte Tasks und Blocker der Woche. Ohne Parameter
+    die aktuelle Woche im Bereich arbeit."""
     woche, start, ende = _wochen_fenster(woche)
     jetzt = datetime.now()
 
-    tasks = list(db.scalars(select(Task)))
-    bloecke = list(db.scalars(select(TimeBlock)))
+    tasks = list(db.scalars(select(Task).where(Task.bereich == bereich)))
+    bloecke = list(db.scalars(select(TimeBlock).where(TimeBlock.bereich == bereich)))
     fenster = _fenster_zusammenfassen(bloecke)
 
     phasen: list[ExportPhase] = []
@@ -109,7 +118,7 @@ def export_woche(
     )
 
     return ExportOut(
-        woche=woche, von=start, bis=ende, erstellt_am=jetzt,
+        woche=woche, bereich=bereich, von=start, bis=ende, erstellt_am=jetzt,
         phasen=phasen, erledigt=erledigt, bloecke=wochen_bloecke,
         zusammenfassung=ExportSummary(
             gearbeitet_minuten=sum(p.minuten for p in phasen),

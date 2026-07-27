@@ -153,6 +153,7 @@ class TimeBlockCreate(BaseModel):
     typ: str
     start: datetime
     ende: datetime
+    bereich: Bereich = "arbeit"
 
     @field_validator("typ")
     @classmethod
@@ -176,6 +177,7 @@ class TimeBlockOut(BaseModel):
     typ: str
     start: NaiveZeit
     ende: NaiveZeit
+    bereich: str
 
 
 # --- Arbeitszeit ---
@@ -226,6 +228,7 @@ def _minuten(hhmm: str) -> int:
 class ScheduleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    bereich: str
     modus: str
     stunden_pro_tag: float
     zeiten: dict[str, list[str] | None] | None
@@ -269,6 +272,7 @@ class ExportSummary(BaseModel):
 
 class ExportOut(BaseModel):
     woche: str
+    bereich: str
     von: datetime
     bis: datetime  # exklusiv, Montag der Folgewoche
     erstellt_am: datetime

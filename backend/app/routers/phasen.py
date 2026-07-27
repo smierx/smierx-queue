@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Task, TaskPhase, _phasenzeit
 from app.routers.tasks import _tag_anwenden, _task_holen
-from app.schemas import PhaseCreate, PhaseOut, PhaseUpdate, TagesPhaseOut
+from app.schemas import Bereich, PhaseCreate, PhaseOut, PhaseUpdate, TagesPhaseOut
 
 router = APIRouter(tags=["phasen"])
 
@@ -51,13 +51,17 @@ def _aktiv_beenden(db: Session, task: Task) -> None:
 @router.get("/phasen", response_model=list[TagesPhaseOut])
 def phasen_eines_tages(
     datum: date | None = None,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> list[TagesPhaseOut]:
     tag = datum or date.today()
     tag_start = datetime.combine(tag, time.min)
     tag_ende = tag_start + timedelta(days=1)
     zeilen = db.execute(
-        select(TaskPhase, Task).join(Task).order_by(TaskPhase.von)
+        select(TaskPhase, Task)
+        .join(Task)
+        .where(Task.bereich == bereich)
+        .order_by(TaskPhase.von)
     ).all()
     ergebnis = []
     for phase, task in zeilen:

@@ -7,41 +7,40 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import TimeBlock, WorkSchedule
-from app.schemas import WOCHENTAGE, CapacityOut, ScheduleOut, ScheduleUpdate, _minuten
+from app.schemas import WOCHENTAGE, Bereich, CapacityOut, ScheduleOut, ScheduleUpdate, _minuten
 
 router = APIRouter(tags=["schedule"])
 
 
-def _schedule_holen(db: Session) -> WorkSchedule:
-    """Genau eine Zeile, lazily angelegt."""
-    schedule = db.scalar(select(WorkSchedule))
+def _schedule_holen(db: Session, bereich: str) -> WorkSchedule:
+    """Genau eine Zeile pro Bereich, lazily angelegt."""
+    schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.bereich == bereich))
     if schedule is None:
-        # Feste Id: parallele Erst-Anlagen kollidieren am Primärschlüssel
-        # statt eine zweite Zeile zu erzeugen.
-        schedule = WorkSchedule(id=1)
+        schedule = WorkSchedule(bereich=bereich)
         db.add(schedule)
         try:
             db.commit()
             db.refresh(schedule)
         except IntegrityError:
             # Beim ersten Seitenaufruf legen /schedule und /capacity parallel an,
-            # der Verlierer des Race liest einfach die Zeile des Gewinners.
+            # der Verlierer des Race (Unique auf bereich) liest die Zeile des Gewinners.
             db.rollback()
-            schedule = db.scalar(select(WorkSchedule))
+            schedule = db.scalar(select(WorkSchedule).where(WorkSchedule.bereich == bereich))
     return schedule
 
 
 @router.get("/schedule", response_model=ScheduleOut)
-def schedule_lesen(db: Session = Depends(get_db)) -> WorkSchedule:
-    return _schedule_holen(db)
+def schedule_lesen(bereich: Bereich = "arbeit", db: Session = Depends(get_db)) -> WorkSchedule:
+    return _schedule_holen(db, bereich)
 
 
 @router.put("/schedule", response_model=ScheduleOut)
 def schedule_setzen(
     daten: ScheduleUpdate,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> WorkSchedule:
-    schedule = _schedule_holen(db)
+    schedule = _schedule_holen(db, bereich)
     schedule.modus = daten.modus
     schedule.stunden_pro_tag = daten.stunden_pro_tag
     schedule.zeiten = daten.zeiten
@@ -72,11 +71,12 @@ def _intervalle_mergen(
 @router.get("/capacity", response_model=CapacityOut)
 def kapazitaet(
     datum: date | None = None,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> CapacityOut:
-    """Freie Kapazität eines Tages: Arbeitszeit minus Termine/Blocker."""
+    """Freie Kapazität eines Tages im Bereich: Zeitfenster minus Termine/Blocker."""
     tag = datum or date.today()
-    schedule = _schedule_holen(db)
+    schedule = _schedule_holen(db, bereich)
 
     tag_start = datetime.combine(tag, time.min)
     tag_ende = datetime.combine(tag, time.max)
@@ -99,7 +99,11 @@ def kapazitaet(
     bloecke = list(
         db.scalars(
             select(TimeBlock)
-            .where(TimeBlock.ende > tag_start, TimeBlock.start < tag_ende)
+            .where(
+                TimeBlock.bereich == bereich,
+                TimeBlock.ende > tag_start,
+                TimeBlock.start < tag_ende,
+            )
             .order_by(TimeBlock.start)
         )
     )

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import TimeBlock
-from app.schemas import TimeBlockCreate, TimeBlockOut
+from app.schemas import Bereich, TimeBlockCreate, TimeBlockOut
 
 router = APIRouter(tags=["timeblocks"])
 
@@ -22,10 +22,12 @@ def _block_holen(db: Session, block_id: int) -> TimeBlock:
 def timeblocks_auflisten(
     von: date | None = None,
     bis: date | None = None,
+    bereich: Bereich = "arbeit",
     db: Session = Depends(get_db),
 ) -> list[TimeBlock]:
-    """Alle Blöcke, optional auf einen Datumsbereich eingegrenzt (Überlappung zählt)."""
-    stmt = select(TimeBlock).order_by(TimeBlock.start)
+    """Blöcke eines Bereichs, optional auf einen Datumsbereich eingegrenzt
+    (Überlappung zählt)."""
+    stmt = select(TimeBlock).where(TimeBlock.bereich == bereich).order_by(TimeBlock.start)
     if von is not None:
         stmt = stmt.where(TimeBlock.ende > datetime.combine(von, time.min))
     if bis is not None:

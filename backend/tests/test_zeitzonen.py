@@ -13,7 +13,7 @@ ZEHN_UHR_MIT_LABEL = datetime(2026, 7, 27, 10, 0, tzinfo=timezone.utc)
 
 def test_timeblock_out_streift_label_ab():
     block = SimpleNamespace(
-        id=1, titel="Daily", typ="meeting",
+        id=1, titel="Daily", typ="meeting", bereich="arbeit",
         start=ZEHN_UHR_MIT_LABEL,
         ende=ZEHN_UHR_MIT_LABEL.replace(hour=11),
     )
@@ -32,7 +32,7 @@ def test_phase_out_streift_label_ab():
 
 def test_naive_werte_bleiben_unveraendert():
     block = SimpleNamespace(
-        id=1, titel="Daily", typ="meeting",
+        id=1, titel="Daily", typ="meeting", bereich="arbeit",
         start=datetime(2026, 7, 27, 10, 0),
         ende=datetime(2026, 7, 27, 11, 0),
     )
