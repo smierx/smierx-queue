@@ -6,16 +6,25 @@ Die Queue ist ein Taskmanagement-System mit einem Versprechen: **Durchsatz vorne
 
 Von oben nach unten:
 
-- **Heute**: der Zeitstrahl. Aktive Tasks als Balken, Termine und Blocker als feste Blöcke, die Warteliste dahinter.
+- **Tag**: der Zeitstrahl des angezeigten Tages (Default heute) mit Datumsnavigation. Aktive Tasks und Phasen als Balken, Termine und Blocker als feste Blöcke, die Warteliste dahinter.
 - **Arbeitszeit**: dein Arbeitszeit-Modell, daraus rechnet die App die freie Kapazität (oben rechts).
-- **Läuft gerade**: alle Tasks mit Tag `aktiv`, daneben der 🌙 Feierabend-Knopf.
-- **Queue**: die Warteliste, `next` zuerst, Rest nach Position. Umsortieren per Drag & Drop, unten das Feld für neue Tasks.
+- **Läuft gerade** (nur heute): alle Tasks mit Tag `aktiv`, daneben der 🌙 Feierabend-Knopf.
+- **Queue**: die Warteliste des angezeigten Tages, `next` zuerst, Rest nach Position. Umsortieren per Drag & Drop, unten das Feld für neue Tasks.
 - **Erledigt**: aufklappbares Archiv mit Wiederöffnen und endgültigem Löschen.
 - **Export**: Wochen-Export als JSON.
 
+## Tage: vorplanen und nachtragen
+
+Jeder Tag hat seine eigene Queue samt Zeitstrahl. Mit ‹ › neben der Überschrift (oder dem Datums-Feld) blätterst du, „Heute" springt zurück.
+
+- **Zukunftstage** planst du vor: Tasks anlegen, sortieren, Dauer ziehen, Blocker eintragen. Die Warteliste liegt ab dem Arbeitsfenster-Beginn im Zeitstrahl. Keine Jetzt-Linie, kein automatischer Statuswechsel.
+- **Vergangene Tage** trägst du nach: Klick auf einen Phasen-Balken korrigiert Von/Bis oder löscht die Phase, „+ Phase" trägt eine neue nach (Task-Auswahl aus heutiger Queue und Archiv), Blocker gehen wie gewohnt. Der Wochen-Export rechnet immer mit dem korrigierten Stand.
+- **Rollover:** was am Tagesende nicht erledigt ist, rutscht automatisch an den Kopf der heutigen Queue, sobald die App den neuen Tag sieht (auch geparkte Tasks wandern mit). Hast du den Feierabend-Knopf vergessen, endet die laufende Phase rückwirkend um Mitternacht und der Task steht auf `next`. Die Zeit korrigierst du bei Bedarf nachträglich.
+- Einen Task verschiebst du über „Geplant am" im Detail-Modal auf einen anderen Tag (er reiht sich dort hinten ein).
+
 ## Tasks
 
-Neuen Task unten in der Queue eintippen, „In die Queue" legt ihn hinten an. Klick auf einen Titel öffnet das Detail-Modal: Titel, Beschreibung, Dauer in Minuten (Default 60) und die Tag-Historie. Der ✓-Knopf erledigt einen Task, er wandert ins Archiv statt gelöscht zu werden. Aus dem Archiv holst du ihn per „Wieder öffnen" zurück (er reiht sich hinten ein) oder löschst ihn endgültig.
+Neuen Task unten in der Queue eintippen, „In die Queue" legt ihn auf den angezeigten Tag. Klick auf einen Titel öffnet das Detail-Modal: Titel, Beschreibung, Dauer in Minuten (Default 60), Geplant-am, die Phasen (mit Bearbeiten/Löschen), rückwirkendes Erledigen und die Tag-Historie. Der ✓-Knopf erledigt einen Task, er wandert ins Archiv statt gelöscht zu werden. Aus dem Archiv holst du ihn per „Wieder öffnen" zurück (er reiht sich heute hinten ein) oder löschst ihn endgültig.
 
 ## Tags
 

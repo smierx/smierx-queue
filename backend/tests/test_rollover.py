@@ -77,12 +77,34 @@ def test_rollover_schliesst_vergessene_phase(client):
     # Feierabend vergessen: die Phase endet um Mitternacht, aktiv wird next.
     alt = _task(client, "Lief noch", tags=["aktiv"])
     _zurueckdatieren(alt["id"], 1)
+    # Die Phase startete auch gestern (18:00), nicht erst heute.
+    gestern_abend = date.today() - timedelta(days=1)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE task_phases SET von = :z WHERE task_id = :id"),
+            {"z": f"{gestern_abend.isoformat()} 18:00:00", "id": alt["id"]},
+        )
 
     tasks = _heutige(client)
     assert tasks[0]["tags"] == ["next"]
     phase = tasks[0]["aktiv_phasen"][-1]
     assert phase["bis"] is not None
     assert phase["bis"].startswith(date.today().isoformat() + "T00:00")
+
+
+def test_rollover_heute_gestartete_phase_wird_nicht_negativ(client):
+    # Task läuft seit heute, wird nachträglich auf gestern datiert: die Phase
+    # endet an ihrem eigenen Start, nicht um Mitternacht davor.
+    alt = _task(client, "Zurückdatiert", tags=["aktiv"])
+    client.patch(
+        f"/api/tasks/{alt['id']}",
+        json={"geplant_am": (date.today() - timedelta(days=1)).isoformat()},
+    )
+
+    task = _heutige(client)[0]
+    phase = task["aktiv_phasen"][-1]
+    assert phase["bis"] is not None
+    assert phase["bis"] >= phase["von"]
 
 
 def test_rollover_laesst_zukunft_und_erledigte_liegen(client):

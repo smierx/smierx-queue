@@ -11,7 +11,7 @@ from datetime import date, datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Task
+from app.models import Task, _phasenzeit
 
 logger = logging.getLogger("smierx_queue.rollover")
 
@@ -19,7 +19,7 @@ logger = logging.getLogger("smierx_queue.rollover")
 def rollover_ausfuehren(db: Session) -> int:
     """Gibt die Anzahl der verschobenen Tasks zurück. Committet selbst."""
     # Import hier statt oben: routers.tasks importiert dieses Modul.
-    from app.routers.tasks import _offene_phase_schliessen, _tag_anwenden
+    from app.routers.tasks import _tag_anwenden
 
     heute = date.today()
     alte = list(
@@ -43,8 +43,12 @@ def rollover_ausfuehren(db: Session) -> int:
     for task in alte:
         # Vergessener Feierabend: die offene Phase endet um Mitternacht,
         # aktiv wird zu next. Falsch verbuchte Zeit ist retro korrigierbar.
+        # Startete die Phase erst nach Mitternacht (Task nachträglich
+        # zurückdatiert), endet sie an ihrem eigenen Start statt davor.
         if "aktiv" in task.tags:
-            _offene_phase_schliessen(task, mitternacht)
+            for phase in task.phasen:
+                if phase.bis is None:
+                    phase.bis = max(mitternacht, _phasenzeit(phase.von))
             _tag_anwenden(task, "next")
         task.geplant_am = heute
     # Carry-Tasks an den Kopf, der heutige Bestand rückt dahinter.

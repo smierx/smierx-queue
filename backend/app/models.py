@@ -50,10 +50,10 @@ def _lokal(zeitpunkt: datetime) -> datetime:
 
 def _phasenzeit(zeitpunkt: datetime) -> datetime:
     """TaskPhase-Zeiten schreibt die App Python-seitig als lokale naive Zeit.
-    Postgres gibt sie aware zurück (Session-TZ), SQLite naiv wie geschrieben."""
-    if zeitpunkt.tzinfo is None:
-        return zeitpunkt
-    return zeitpunkt.astimezone().replace(tzinfo=None)
+    Postgres hängt beim Lesen nur ein Session-TZ-Label an, der Wert selbst bleibt
+    wie geschrieben → Label abstreifen, nie konvertieren (wie _ohne_tz bei den
+    TimeBlocks). SQLite gibt sie naiv zurück."""
+    return zeitpunkt.replace(tzinfo=None)
 
 
 class Task(Base):

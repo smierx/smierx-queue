@@ -235,9 +235,12 @@ GEPARKT = {"pausiert", "holding", "inaktiv"}
 
 
 def _fenster_zusammenfassen(bloecke: list[TimeBlock]) -> list[tuple[datetime, datetime]]:
-    """Blocker/Meetings als sortierte, überlappungsfreie Zeitfenster."""
+    """Blocker/Meetings als sortierte, überlappungsfreie Zeitfenster (naive
+    lokale Zeit, damit Vergleiche mit datetime.now() und aktiv_seit gehen)."""
     fenster: list[tuple[datetime, datetime]] = []
-    for start, ende in sorted((b.start, b.ende) for b in bloecke):
+    for start, ende in sorted(
+        (b.start.replace(tzinfo=None), b.ende.replace(tzinfo=None)) for b in bloecke
+    ):
         if fenster and start <= fenster[-1][1]:
             fenster[-1] = (fenster[-1][0], max(fenster[-1][1], ende))
         else:

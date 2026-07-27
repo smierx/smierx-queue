@@ -90,14 +90,20 @@ def export_woche(
         key=lambda e: e.erledigt_am,
     )
 
+    # TimeBlock-Zeiten sind naive lokale Werte mit Session-TZ-Label (Postgres),
+    # fürs Rechnen das Label abstreifen.
     wochen_bloecke = sorted(
         (
             ExportBlock(
-                titel=b.titel, typ=b.typ, start=b.start, ende=b.ende,
-                minuten=_minuten(min(b.ende, ende) - max(b.start, start)),
+                titel=b.titel, typ=b.typ,
+                start=b.start.replace(tzinfo=None), ende=b.ende.replace(tzinfo=None),
+                minuten=_minuten(
+                    min(b.ende.replace(tzinfo=None), ende)
+                    - max(b.start.replace(tzinfo=None), start)
+                ),
             )
             for b in bloecke
-            if b.ende > start and b.start < ende
+            if b.ende.replace(tzinfo=None) > start and b.start.replace(tzinfo=None) < ende
         ),
         key=lambda b: b.start,
     )
