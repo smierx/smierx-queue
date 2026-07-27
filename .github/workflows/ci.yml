@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Backend-Tests + Lint
+        working-directory: backend
+        run: |
+          uv sync
+          uv run ruff check .
+          uv run pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Frontend-Build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build

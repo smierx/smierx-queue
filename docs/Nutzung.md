@@ -11,7 +11,6 @@ Von oben nach unten:
 - **Läuft gerade**: alle Tasks mit Tag `aktiv`, daneben der 🌙 Feierabend-Knopf.
 - **Queue**: die Warteliste, `next` zuerst, Rest nach Position. Umsortieren per Drag & Drop, unten das Feld für neue Tasks.
 - **Erledigt**: aufklappbares Archiv mit Wiederöffnen und endgültigem Löschen.
-- **GitLab**: optionaler Sync, siehe unten.
 - **Export**: Wochen-Export als JSON.
 
 ## Tasks
@@ -71,25 +70,10 @@ Im Arbeitszeit-Panel wählst du deinen Modus:
 - **Stunden pro Tag**: z.B. 8 Stunden, ohne feste Lage.
 - **Feste Zeiten**: pro Wochentag ein Fenster, z.B. Mo 08:00 bis 16:30, freie Tage bleiben leer.
 
-Freie Kapazität = Arbeitszeit minus Termine/Blocker, angezeigt oben rechts. Die Einstellung gilt pro User.
+Freie Kapazität = Arbeitszeit minus Termine/Blocker, angezeigt oben rechts.
 
 ## Wochen-Export
 
 Die Export-Sektion lädt eine Kalenderwoche als JSON herunter (`smierx-queue-JJJJ-WXX.json`): alle aktiv-Phasen mit Netto-Minuten (Blocker-Zeit abgezogen, offene Phasen bis jetzt gerechnet und als `offen` markiert), erledigte Tasks, Blocker und eine Zusammenfassung (gearbeitet, geblockt, erledigt).
 
 Ehrlich einordnen: der Export misst **geplante Aktiv-Zeit, keine belegte Arbeit**. Die automatische Übergabe erzeugt auch Phasen, in denen du real etwas anderes getan hast. Die Zahlen sind Orientierung, kein Timesheet.
-
-## GitLab-Sync (optional)
-
-Ohne Sync läuft die App vollwertig. Einrichten im GitLab-Panel: GitLab-URL, Personal Access Token mit Scope `api`, Projekt-Ids. „Jetzt syncen" gleicht ab:
-
-- Offene Issues der gewählten Projekte werden Tasks (Dedup über die Issue-Id).
-- Geschlossene Issues archivieren ihren Task, wiedereröffnete holen ihn zurück. Andersrum schließt lokales Erledigen das verlinkte Issue.
-- Titel-Änderungen laufen in beide Richtungen, bei beidseitiger Änderung gewinnt GitLab (last-write-wins, der Konflikt wird gemeldet).
-- Tags spiegeln sich als `queue::<tag>`-Labels, fremde Labels bleiben unangetastet.
-
-Der Sync ist Polling, kein Webhook: manuell per Knopf oder den Endpunkt `POST /api/gitlab/sync` per cron anstoßen. Das Panel zeigt die letzten Sync-Läufe und Issue-Statuswechsel aus dem persistenten Log. Der Token wird gespeichert, aber nie wieder ausgegeben; lokale Tasks werden bewusst nicht als neue Issues angelegt.
-
-## Login
-
-Mit Keycloak (Prod- und Home-Deploy) leitet die App direkt zum Login um, jeder User sieht nur seine eigenen Tasks, Blöcke und Einstellungen. Ohne Keycloak (`docker-compose.noauth.yml` oder nativ ohne `OIDC_ISSUER`) gibt es keinen Login und einen festen User `dev`. Dann schützt allein die Erreichbarkeit, siehe README.

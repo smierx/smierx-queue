@@ -1,5 +1,10 @@
-# Lokales Dev-Setup: Postgres + Keycloak + API + Frontend (Vite mit Hot Reload).
-# `docker compose up -d` startet alles, UI auf http://localhost:5173.
+# Der komplette Stack: Postgres + App (API + gebautes Frontend in einem Image).
+# `docker compose up -d --build` starten, UI auf http://127.0.0.1:8010.
+#
+# Fürs Entwickeln mit Hot Reload läuft nur die DB im Container:
+#   docker compose up -d db
+#   cd backend && uv run uvicorn app.main:app --reload
+#   cd frontend && npm run dev
 services:
   db:
     image: postgres:16
@@ -8,7 +13,7 @@ services:
       POSTGRES_PASSWORD: smierx_queue
       POSTGRES_DB: smierx_queue
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,48 +22,17 @@ services:
       timeout: 3s
       retries: 5
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    command: ["start-dev", "--import-realm"]
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import:ro
-
-  api:
-    build: ./backend
+  app:
+    build: .
     environment:
       DATABASE_URL: postgresql+psycopg://smierx_queue:smierx_queue@db:5432/smierx_queue
       # Die App rechnet mit lokaler Zeit ("heute", Tagesfenster), Container-Default wäre UTC.
       TZ: Europe/Berlin
-      # Issuer wie ihn der Browser sieht; JWKS holt der Container über das interne Netz.
-      OIDC_ISSUER: http://localhost:8080/realms/smierx
-      OIDC_JWKS_URL: http://keycloak:8080/realms/smierx/protocol/openid-connect/certs
-      FRONTEND_KEYCLOAK_URL: http://localhost:8080
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8010:8000"
     depends_on:
       db:
         condition: service_healthy
 
-  frontend:
-    image: node:22-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host"
-    environment:
-      VITE_API_TARGET: http://api:8000
-    volumes:
-      - ./frontend:/app
-      # node_modules bleiben im Container, damit sie nicht mit dem Host kollidieren.
-      - frontend_node_modules:/app/node_modules
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api
-
 volumes:
   pgdata:
-  frontend_node_modules:
