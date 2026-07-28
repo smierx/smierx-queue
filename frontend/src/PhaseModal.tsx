@@ -31,20 +31,33 @@ export function PhaseModal({ phase, datum, bereich, onClose, onChange }: {
   );
   const [bisZeit, setBisZeit] = useState(phase ? (phase.bis ? alsZeit(phase.bis) : "") : "10:00");
   const [fehler, setFehler] = useState<string | null>(null);
+  const [sende, setSende] = useState(false);
   const offen = phase !== null && phase.bis === null;
 
   useEffect(() => {
     if (!neu) return;
-    // Kandidaten fürs Nachtragen: die heutige Queue plus das Archiv des Bereichs.
+    // Kandidaten fürs Nachtragen: die Queue des angezeigten Tages, die heutige
+    // Queue und das Archiv des Bereichs, per Id dedupet.
     const b = bereich ?? "arbeit";
-    Promise.all([api.tasks(b), api.tasksErledigt(b)]).then(([offene, erledigte]) =>
-      setTaskListe([...offene, ...erledigte]),
-    );
-  }, [neu, bereich]);
+    Promise.all([api.tasks(b, datum), api.tasks(b), api.tasksErledigt(b)]).then((listen) => {
+      const nachId = new Map<number, Task>();
+      for (const t of listen.flat()) if (!nachId.has(t.id)) nachId.set(t.id, t);
+      setTaskListe([...nachId.values()]);
+    });
+  }, [neu, bereich, datum]);
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
 
   async function speichern(event: React.FormEvent) {
     event.preventDefault();
     setFehler(null);
+    setSende(true);
     const von = `${vonDatum}T${vonZeit}:00`;
     const bis = bisDatum && bisZeit ? `${bisDatum}T${bisZeit}:00` : null;
     try {
@@ -60,6 +73,8 @@ export function PhaseModal({ phase, datum, bereich, onClose, onChange }: {
       onClose();
     } catch (e) {
       setFehler(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSende(false);
     }
   }
 
@@ -146,7 +161,9 @@ export function PhaseModal({ phase, datum, bereich, onClose, onChange }: {
             <button type="button" className="sekundaer" onClick={onClose}>
               Abbrechen
             </button>
-            <button type="submit">{neu ? "Nachtragen" : "Speichern"}</button>
+            <button type="submit" disabled={sende}>
+              {neu ? "Nachtragen" : "Speichern"}
+            </button>
           </div>
         </form>
       </div>

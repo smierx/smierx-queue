@@ -110,8 +110,18 @@ export function Tagesleiste({
   onPhaseNeu?: () => void; // "+ Phase" an vergangenen Tagen
 }) {
   const [form, setForm] = useState<FormDaten | null>(null);
+  const [sende, setSende] = useState(false);
   // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
   const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (!form) return;
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") setForm(null);
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [form]);
   const drag = useRef<{ x: number; offset: number; bewegt: boolean } | null>(null);
   const achseRef = useRef<HTMLDivElement>(null);
 
@@ -432,18 +442,23 @@ export function Tagesleiste({
 
   async function speichern(event: React.FormEvent) {
     event.preventDefault();
-    if (!form || !form.titel.trim()) return;
-    const daten = {
-      titel: form.titel.trim(),
-      typ: form.typ,
-      bereich,
-      start: amTagUm(form.von),
-      ende: amTagUm(form.bis),
-    };
-    if (form.id === null) await api.timeblockAnlegen(daten);
-    else await api.timeblockAendern(form.id, daten);
-    setForm(null);
-    onChange();
+    if (!form || !form.titel.trim() || sende) return;
+    setSende(true);
+    try {
+      const daten = {
+        titel: form.titel.trim(),
+        typ: form.typ,
+        bereich,
+        start: amTagUm(form.von),
+        ende: amTagUm(form.bis),
+      };
+      if (form.id === null) await api.timeblockAnlegen(daten);
+      else await api.timeblockAendern(form.id, daten);
+      setForm(null);
+      onChange();
+    } finally {
+      setSende(false);
+    }
   }
 
   async function loeschen() {
@@ -644,7 +659,9 @@ export function Tagesleiste({
                 <button type="button" className="sekundaer" onClick={() => setForm(null)}>
                   Abbrechen
                 </button>
-                <button type="submit">{form.id === null ? "Eintragen" : "Speichern"}</button>
+                <button type="submit" disabled={sende}>
+                  {form.id === null ? "Eintragen" : "Speichern"}
+                </button>
               </div>
             </form>
           </div>

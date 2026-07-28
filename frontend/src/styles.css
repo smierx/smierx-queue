@@ -2,7 +2,7 @@
   --bg: #f2f5f5;
   --surface: #fff;
   --ink: #1a2529;
-  --muted: #5d6e74;
+  --muted: #4a5a66;
   --line: #dbe3e5;
   --accent: #0f6b6f;
 }
@@ -64,10 +64,10 @@ h2 {
 .tag.an.aktiv      { background: #ddf0e2; color: #1e6e3c; }
 .tag.an.next       { background: #dbe7f6; color: #26507e; }
 .tag.an.pausiert   { background: #f3ead2; color: #7d621d; }
-.tag.an.holding    { background: #e9e4f2; color: #5b4a86; }
-.tag.an.discussion { background: #efe0ee; color: #7c3d76; }
+.tag.an.holding    { background: #e9e4f2; color: #4a3a70; }
+.tag.an.discussion { background: #efe0ee; color: #6a2c64; }
 .tag.an.critical   { background: #f6dcda; color: #a02c22; }
-.tag.an.inaktiv    { background: #e7ebec; color: #5d6e74; }
+.tag.an.inaktiv    { background: #e7ebec; color: #48575e; }
 
 .zeile .grip { color: #b6c2c6; cursor: grab; }
 .zeile.am-ziehen { opacity: 0.4; }
@@ -81,6 +81,9 @@ h2 {
   color: inherit;
   cursor: pointer;
   padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .karte .titel-knopf { font-weight: 600; display: block; margin-bottom: 8px; }
 .loeschen {
@@ -124,6 +127,8 @@ h2 {
   font-size: 0.7rem; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   cursor: pointer;
+  /* Kurze Blöcke bleiben klickbar, klein genug fürs Prozent-Layout */
+  min-width: 14px;
 }
 .achse .block.meeting { background: #dbe7f6; color: #26507e; border: 1px solid #b9d0ec; }
 .achse .block.blocker { background: #efe4d8; color: #7a5326; border: 1px solid #e0cdb6; }
@@ -133,7 +138,7 @@ h2 {
 /* Läuft über die geplante Dauer hinaus */
 .achse .block.task.ueberzogen { border-color: #d8a13c; background: #f0ecd8; color: #6e5a1e; }
 /* Vergangene aktiv-Phasen: bleiben stehen, aber zurückhaltend */
-.achse .block.task.vergangen { opacity: 0.55; font-weight: 400; }
+.achse .block.task.vergangen { opacity: 0.7; font-weight: 400; }
 /* Geplante Queue-Tasks: eine Ebene, nacheinander */
 .achse .block.task.geplant { background: #eef1f4; color: #4a5a66; border: 1px dashed #b9c4cd; }
 /* Griff am rechten Rand: Ziehen ändert die Dauer */
@@ -143,7 +148,7 @@ h2 {
 }
 .achse .block .resize-griff:hover { background: #00000018; }
 .achse .jetzt { position: absolute; top: 12px; bottom: 0; width: 2px; background: var(--accent); }
-.leiste-fuss { margin-top: 8px; display: flex; align-items: center; }
+.leiste-fuss { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; }
 .leiste-nav { margin-left: auto; display: inline-flex; gap: 4px; }
 .sekundaer {
   background: var(--surface);
@@ -162,7 +167,7 @@ h2 {
 .export-zeile .hint { color: var(--muted); font-size: 0.8rem; }
 
 /* Von/Bis nebeneinander im Blocker-Modal */
-.zeit-zeile { display: flex; gap: 12px; align-items: flex-end; }
+.zeit-zeile { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .zeit-zeile button { margin-bottom: 12px; }
 
 /* Modal */

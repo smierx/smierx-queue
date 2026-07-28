@@ -34,37 +34,57 @@ export function TaskDetail({ task, onClose, onChange }: {
   const [erledigtUm, setErledigtUm] = useState(jetztLokal());
   const [historie, setHistorie] = useState<TagEvent[]>([]);
   const [phaseEdit, setPhaseEdit] = useState<Phase | null>(null);
+  const [sende, setSende] = useState(false);
 
   useEffect(() => {
     api.historie(task.id).then(setHistorie);
   }, [task.id]);
 
+  // Escape schließt, außer das verschachtelte PhaseModal ist offen (das
+  // schließt sich dann selbst über seinen eigenen Listener).
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape" && phaseEdit === null) onClose();
+    }
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose, phaseEdit]);
+
   async function speichern(event: React.FormEvent) {
     event.preventDefault();
-    const dauerMinuten = Math.min(Math.max(Number(dauer) || 60, 5), 24 * 60);
-    await api.taskAendern(task.id, {
-      titel,
-      beschreibung,
-      dauer_minuten: dauerMinuten,
-      geplant_am: geplantAm !== task.geplant_am ? geplantAm : undefined,
-      bereich: bereich !== task.bereich ? bereich : undefined,
-    });
-    onChange();
-    onClose();
+    setSende(true);
+    try {
+      const dauerMinuten = Math.min(Math.max(Number(dauer) || 60, 5), 24 * 60);
+      await api.taskAendern(task.id, {
+        titel,
+        beschreibung,
+        dauer_minuten: dauerMinuten,
+        geplant_am: geplantAm !== task.geplant_am ? geplantAm : undefined,
+        bereich: bereich !== task.bereich ? bereich : undefined,
+      });
+      onChange();
+      onClose();
+    } finally {
+      setSende(false);
+    }
   }
 
   async function retroErledigen() {
-    if (!erledigtUm) return;
-    await api.erledigen(task.id, `${erledigtUm}:00`);
-    onChange();
-    onClose();
+    if (!erledigtUm || sende) return;
+    setSende(true);
+    try {
+      await api.erledigen(task.id, `${erledigtUm}:00`);
+      onChange();
+      onClose();
+    } finally {
+      setSende(false);
+    }
   }
 
   async function phaseLoeschen(phasenId: number | null) {
     if (phasenId === null) return;
     await api.phaseLoeschen(phasenId);
-    onChange();
-    onClose();
+    onChange(); // Modal bleibt offen, die Phasenliste kommt frisch über die Props
   }
 
   return (
@@ -125,7 +145,9 @@ export function TaskDetail({ task, onClose, onChange }: {
             <button type="button" className="sekundaer" onClick={onClose}>
               Abbrechen
             </button>
-            <button type="submit">Speichern</button>
+            <button type="submit" disabled={sende}>
+              Speichern
+            </button>
           </div>
         </form>
 
@@ -199,10 +221,7 @@ export function TaskDetail({ task, onClose, onChange }: {
             phase={phaseEdit}
             datum={task.geplant_am}
             onClose={() => setPhaseEdit(null)}
-            onChange={() => {
-              onChange();
-              onClose();
-            }}
+            onChange={onChange} // TaskDetail bleibt offen, Daten kommen frisch rein
           />
         )}
       </div>

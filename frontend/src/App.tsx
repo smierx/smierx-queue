@@ -69,7 +69,9 @@ export default function App() {
   const [kapazitaet, setKapazitaet] = useState<Capacity | null>(null);
   const [neuerTitel, setNeuerTitel] = useState("");
   const [fehler, setFehler] = useState<string | null>(null);
-  const [detail, setDetail] = useState<Task | null>(null);
+  // Nur die Id, nie der Task-Snapshot: das Modal liest immer den frischen Stand
+  // aus der Liste, auch nach Polling oder Phasen-Edits.
+  const [detailId, setDetailId] = useState<number | null>(null);
   // null = zu, { phase: null } = neue Phase nachtragen, sonst bearbeiten.
   const [phaseModal, setPhaseModal] = useState<{ phase: Phase | null } | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
@@ -77,9 +79,26 @@ export default function App() {
 
   const istHeute = datum === heuteIso();
   const modus: LeistenModus = istHeute ? "heute" : datum < heuteIso() ? "vergangen" : "zukunft";
+  const laedt = kapazitaet === null && fehler === null;
+
+  // Die Ansicht klebt an "heute", bis ein Tag bewusst gewählt wird. So folgt
+  // eine über Mitternacht offene App dem neuen Tag statt still auf die
+  // Gestern-Ansicht zu kippen.
+  const folgtHeute = useRef(true);
+  function datumWaehlen(d: string) {
+    folgtHeute.current = d === heuteIso();
+    setDatum(d);
+  }
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (folgtHeute.current) setDatum((alt) => (alt === heuteIso() ? alt : heuteIso()));
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const laden = useCallback(async () => {
     try {
+      hoverTask.current = null; // sonst zielt die w-Taste auf einen alten Stand
       // Heute übernimmt der Tick Rollover und Statuswechsel und liefert die
       // Liste, andere Tage werden nur gelesen. Die Phasen füttern den Zeitstrahl.
       const [t, k, p] = await Promise.all([
@@ -107,22 +126,28 @@ export default function App() {
   function bereichWechseln(neu: Bereich) {
     if (neu === bereich) return;
     localStorage.setItem("queue.bereich", neu);
-    // Offene Modals zeigen sonst Objekte der anderen Seite.
-    setDetail(null);
+    // Offene Modals zeigen sonst Objekte der anderen Seite, und die alten
+    // Listen würden kurz unter dem neuen Akzent aufblitzen.
+    setDetailId(null);
     setPhaseModal(null);
+    setTasks([]);
+    setPhasen([]);
+    setKapazitaet(null);
+    setErledigte([]);
     setBereich(neu);
   }
 
   // Task in die andere Welt schieben: per ⇄-Knopf am Task oder Taste w,
-  // während die Maus über dem Task steht.
+  // während die Maus über dem Task steht. Ziel ist immer die Gegenseite der
+  // aktuellen Ansicht (die Liste zeigt nur Tasks des aktiven Bereichs).
   const hoverTask = useRef<Task | null>(null);
   const verschieben = useCallback(
     async (task: Task) => {
       hoverTask.current = null;
-      await api.taskAendern(task.id, { bereich: andererBereich(task.bereich) });
+      await api.taskAendern(task.id, { bereich: andererBereich(bereich) });
       laden();
     },
-    [laden],
+    [laden, bereich],
   );
 
   useEffect(() => {
@@ -136,12 +161,12 @@ export default function App() {
         ziel.isContentEditable
       )
         return;
-      if (detail || phaseModal) return; // im Modal hat w keine Sonderrolle
+      if (detailId !== null || phaseModal) return; // im Modal hat w keine Sonderrolle
       if (hoverTask.current) verschieben(hoverTask.current);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detail, phaseModal, verschieben]);
+  }, [detailId, phaseModal, verschieben]);
 
   function hoverProps(task: Task) {
     return {
@@ -157,7 +182,7 @@ export default function App() {
       <button
         type="button"
         className="wechsel"
-        title={`Nach ${BEREICH_NAMEN[andererBereich(task.bereich)]} schieben (w)`}
+        title={`Nach ${BEREICH_NAMEN[andererBereich(bereich)]} schieben (w)`}
         onClick={() => verschieben(task)}
       >
         ⇄
@@ -218,6 +243,8 @@ export default function App() {
       const rangB = b.tags.includes("next") ? 0 : 1;
       return rangA - rangB || a.position - b.position;
     });
+  // Verschwindet der Task aus der Liste (erledigt, verschoben), schließt das Modal.
+  const detailTask = detailId === null ? null : (tasks.find((t) => t.id === detailId) ?? null);
 
   async function abgelegt(zielId: number) {
     if (dragId === null || dragId === zielId) return;
@@ -247,15 +274,22 @@ export default function App() {
             </button>
           ))}
         </div>
-        {kapazitaet && (
-          <div className="kapazitaet">
-            {datumLabel(datum)} {minutenAlsText(kapazitaet.frei_minuten)} frei
-            <small>
-              {minutenAlsText(kapazitaet.arbeitszeit_minuten)} Arbeitszeit,{" "}
-              {minutenAlsText(kapazitaet.geblockt_minuten)} geblockt
-            </small>
-          </div>
-        )}
+        {/* Platz bleibt reserviert, damit der Header beim Laden nicht springt. */}
+        <div className="kapazitaet" style={kapazitaet ? undefined : { visibility: "hidden" }}>
+          {kapazitaet ? (
+            <>
+              {datumLabel(datum)} {minutenAlsText(kapazitaet.frei_minuten)} frei
+              <small>
+                {minutenAlsText(kapazitaet.arbeitszeit_minuten)} Arbeitszeit,{" "}
+                {minutenAlsText(kapazitaet.geblockt_minuten)} geblockt
+              </small>
+            </>
+          ) : (
+            <>
+              –<small>–</small>
+            </>
+          )}
+        </div>
       </header>
 
       {fehler && <p className="fehler">API nicht erreichbar: {fehler}</p>}
@@ -263,13 +297,16 @@ export default function App() {
       <section>
         <h2>
           {datumLabel(datum)}
-          <DateNav datum={datum} onChange={setDatum} />
+          <DateNav datum={datum} onChange={datumWaehlen} />
         </h2>
         {modus === "vergangen" && (
           <p className="hint">
-            Vergangener Tag: Phasen im Zeitstrahl anklicken zum Korrigieren, Blocker nachtragen.
+            Vergangener Tag: Phasen anklicken zum Korrigieren, „+ Phase" und Blocker nachtragen.
+            Ein neuer Task hier bleibt offene Arbeit und rutscht zu heute — fürs reine Nachtragen
+            den Task anlegen und im Modal rückwirkend erledigen.
           </p>
         )}
+        {laedt && <p className="leer">Lädt…</p>}
         {kapazitaet && (
           <Tagesleiste
             datum={datum}
@@ -280,7 +317,7 @@ export default function App() {
             aktive={aktive}
             geplante={queue}
             onChange={laden}
-            onTaskClick={setDetail}
+            onTaskClick={(t) => setDetailId(t.id)}
             onPhaseClick={(phase) => setPhaseModal({ phase })}
             onPhaseNeu={() => setPhaseModal({ phase: null })}
           />
@@ -314,7 +351,7 @@ export default function App() {
               {...hoverProps(task)}
             >
               <div className="karten-kopf">
-                <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+                <button type="button" className="titel-knopf" onClick={() => setDetailId(task.id)}>
                   {task.titel}
                 </button>
                 {wechselKnopf(task)}
@@ -359,7 +396,7 @@ export default function App() {
             <span className="grip" aria-hidden>
               ⠿
             </span>
-            <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
+            <button type="button" className="titel-knopf" onClick={() => setDetailId(task.id)}>
               {task.titel}
             </button>
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
@@ -378,7 +415,13 @@ export default function App() {
           <input
             value={neuerTitel}
             onChange={(e) => setNeuerTitel(e.target.value)}
-            placeholder={istHeute ? "Neuer Task…" : `Neuer Task für ${datumLabel(datum)}…`}
+            placeholder={
+              istHeute
+                ? "Neuer Task…"
+                : modus === "vergangen"
+                  ? `Nachtragen für ${datumLabel(datum)}…`
+                  : `Neuer Task für ${datumLabel(datum)}…`
+            }
           />
           <button type="submit">In die Queue</button>
         </form>
@@ -445,7 +488,9 @@ export default function App() {
         </div>
       </section>
 
-      {detail && <TaskDetail task={detail} onClose={() => setDetail(null)} onChange={laden} />}
+      {detailTask && (
+        <TaskDetail task={detailTask} onClose={() => setDetailId(null)} onChange={laden} />
+      )}
       {phaseModal && (
         <PhaseModal
           phase={phaseModal.phase}

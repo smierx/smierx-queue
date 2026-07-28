@@ -56,7 +56,7 @@ export function SchedulePanel({ bereich, onChange }: {
     <section>
       <h2>
         <button type="button" className="aufklappen" onClick={() => setOffen(!offen)}>
-          Arbeitszeit (
+          Arbeitszeit-Modell (
           {schedule.modus === "stunden"
             ? `${schedule.stunden_pro_tag} h pro Tag`
             : "feste Zeiten"}
