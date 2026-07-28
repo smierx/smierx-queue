@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "./api";
 import { DateNav, datumLabel, heuteIso } from "./DateNav";
@@ -17,6 +17,10 @@ import {
 } from "./types";
 
 const BEREICH_NAMEN: Record<Bereich, string> = { arbeit: "Arbeit", privat: "Privat" };
+
+function andererBereich(b: Bereich): Bereich {
+  return b === "arbeit" ? "privat" : "arbeit";
+}
 
 function gespeicherterBereich(): Bereich {
   return localStorage.getItem("queue.bereich") === "privat" ? "privat" : "arbeit";
@@ -107,6 +111,58 @@ export default function App() {
     setDetail(null);
     setPhaseModal(null);
     setBereich(neu);
+  }
+
+  // Task in die andere Welt schieben: per ⇄-Knopf am Task oder Taste w,
+  // während die Maus über dem Task steht.
+  const hoverTask = useRef<Task | null>(null);
+  const verschieben = useCallback(
+    async (task: Task) => {
+      hoverTask.current = null;
+      await api.taskAendern(task.id, { bereich: andererBereich(task.bereich) });
+      laden();
+    },
+    [laden],
+  );
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "w" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const ziel = e.target as HTMLElement;
+      if (
+        ziel instanceof HTMLInputElement ||
+        ziel instanceof HTMLTextAreaElement ||
+        ziel instanceof HTMLSelectElement ||
+        ziel.isContentEditable
+      )
+        return;
+      if (detail || phaseModal) return; // im Modal hat w keine Sonderrolle
+      if (hoverTask.current) verschieben(hoverTask.current);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detail, phaseModal, verschieben]);
+
+  function hoverProps(task: Task) {
+    return {
+      onMouseEnter: () => (hoverTask.current = task),
+      onMouseLeave: () => {
+        if (hoverTask.current?.id === task.id) hoverTask.current = null;
+      },
+    };
+  }
+
+  function wechselKnopf(task: Task) {
+    return (
+      <button
+        type="button"
+        className="wechsel"
+        title={`Nach ${BEREICH_NAMEN[andererBereich(task.bereich)]} schieben (w)`}
+        onClick={() => verschieben(task)}
+      >
+        ⇄
+      </button>
+    );
   }
 
   useEffect(() => {
@@ -255,11 +311,13 @@ export default function App() {
             <article
               key={task.id}
               className={`karte ${task.tags.includes("critical") ? "critical" : ""}`}
+              {...hoverProps(task)}
             >
               <div className="karten-kopf">
                 <button type="button" className="titel-knopf" onClick={() => setDetail(task)}>
                   {task.titel}
                 </button>
+                {wechselKnopf(task)}
                 <button
                   type="button"
                   className="fertig"
@@ -278,7 +336,9 @@ export default function App() {
       <section>
         <h2>
           Queue für {datumLabel(datum)}{" "}
-          <span className="hint">next zuerst · ziehen zum Umsortieren</span>
+          <span className="hint">
+            next zuerst · ziehen zum Umsortieren · ⇄ oder w schiebt in die andere Welt
+          </span>
         </h2>
         {queue.length === 0 && !istHeute && (
           <p className="leer">
@@ -294,6 +354,7 @@ export default function App() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => abgelegt(task.id)}
             onDragEnd={() => setDragId(null)}
+            {...hoverProps(task)}
           >
             <span className="grip" aria-hidden>
               ⠿
@@ -302,6 +363,7 @@ export default function App() {
               {task.titel}
             </button>
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
+            {wechselKnopf(task)}
             <button
               type="button"
               className="fertig"
