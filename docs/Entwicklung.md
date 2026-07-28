@@ -26,7 +26,7 @@ Im Betrieb gibt es genau einen App-Container: die API served das gebaute Fronten
 | `app/schemas.py` | Pydantic-Schemas für Ein- und Ausgabe |
 | `app/routers/` | `tasks` (CRUD, Tags, Queue, Tick, Feierabend), `phasen` (Tages-Timeline + Nachtragen), `timeblocks`, `schedule` (+ Kapazität), `export` |
 | `app/rollover.py` | Offene Tasks vergangener Tage auf heute schieben (lazy, idempotent) |
-| `app/tick.py` | Hintergrund-Schleife: Rollover + Übergabe-Prüfung, wenn offene Tasks existieren |
+| `app/tick.py` | Hintergrund-Schleife: Rollover-Herzschlag (Tageswechsel über Nacht) |
 
 ### Datenmodell
 
@@ -44,7 +44,7 @@ Alles Fachliche trägt einen **Bereich** (`arbeit` | `privat`, Konstante `BEREIC
 
 ### Queue-Mechanik
 
-Kern ist `uebergabe_pruefen()` in `routers/tasks.py`, sie läuft **pro Bereich**: sind Tasks aktiv, aber keiner mehr in seiner geplanten Zeit (aktiv seit + Dauer, Blocker-Fenster des Bereichs schieben das Ende nach hinten), wird der nächste wartende Task aktiv. `next` zuerst, geparkte (`pausiert`, `holding`, `inaktiv`) übersprungen, höchstens ein Wechsel, ohne aktive Tasks passiert nichts, mitten im Blocker auch nicht. Betrachtet wird nur die heutige Queue des Bereichs, vorgeplante Tage und der andere Bereich bleiben unberührt. Der Endpoint `POST /queue/tick` und die Hintergrund-Schleife (`app/tick.py`, `TICK_INTERVALL_SEKUNDEN`) prüfen beide Bereiche.
+**Es gibt keinen automatischen Statuswechsel** (Entscheid 2026-07-28, die frühere `uebergabe_pruefen`-Automatik ist ausgebaut): Die Dauer ist eine Schätzung, überzogene Tasks laufen weiter, gewechselt wird von Hand über die Tag-Endpoints. `POST /queue/tick` fährt den Rollover und liefert die heutige Liste, die Hintergrund-Schleife (`app/tick.py`, `TICK_INTERVALL_SEKUNDEN`) ist nur noch der Rollover-Herzschlag (wichtig für den Tageswechsel über Nacht).
 
 **Wichtig:** die Schleife läuft im Lifespan. Bei mehreren Uvicorn-Workern liefe sie mehrfach, das Deployment nutzt deshalb bewusst **einen Worker**.
 
@@ -67,7 +67,7 @@ Fast alle Lese- und Queue-Endpunkte nehmen `bereich=arbeit|privat` (Default `arb
 |---|---|
 | Tasks | `GET /tasks?datum=&bereich=` (Tages-Queue, Default heute; `erledigt=true` = Archiv des Bereichs), `POST /tasks` (+ `geplant_am`, `bereich`), `GET/PATCH/DELETE /tasks/{id}` (PATCH `geplant_am`/`bereich` verschiebt ans Ende der Ziel-Queue), `PUT/DELETE /tasks/{id}/tags/{tag}`, `POST /tasks/{id}/erledigt` (optional `{zeitpunkt}` retro), `DELETE /tasks/{id}/erledigt` (→ heute, hinten im eigenen Bereich), `GET /tasks/{id}/historie` |
 | Phasen | `GET /phasen?datum=&bereich=` (alle Phasen des Tages mit Task-Kontext), `POST /tasks/{id}/phasen` (nachtragen, `bis` Pflicht, keine Überlappung je Task), `PATCH/DELETE /phasen/{id}` (offene Phase schließen/löschen nimmt das aktiv-Tag mit runter) |
-| Queue | `PUT /queue/order` (Ziel-Reihenfolge eines Tages und Bereichs), `POST /queue/tick?bereich=` (Rollover + Übergabe beider Bereiche + Liste des angefragten), `POST /queue/feierabend?bereich=` |
+| Queue | `PUT /queue/order` (Ziel-Reihenfolge eines Tages und Bereichs), `POST /queue/tick?bereich=` (Rollover + Liste des angefragten Bereichs, kein Auto-Statuswechsel), `POST /queue/feierabend?bereich=` |
 | Zeitblöcke | `GET /timeblocks?bereich=`, `POST /timeblocks` (+ `bereich`), `PUT/DELETE /timeblocks/{id}` |
 | Arbeitszeit | `GET/PUT /schedule?bereich=`, `GET /capacity?datum=&bereich=` |
 | Export | `GET /export?woche=JJJJ-WXX&bereich=` |
@@ -96,7 +96,7 @@ cd ../frontend
 npm run build          # tsc + vite, dient auch als Typcheck
 ```
 
-Die Tests decken die Fachlogik ab (Tags, Übergabe, Blocker-Rechnung, Kapazität, Export). Neue Fachlogik bekommt einen Test, Testnamen sind deutsch und beschreiben das Verhalten (`test_tick_wartet_im_blocker`).
+Die Tests decken die Fachlogik ab (Tags, Phasen, Rollover, Blocker-Rechnung, Kapazität, Export). Neue Fachlogik bekommt einen Test, Testnamen sind deutsch und beschreiben das Verhalten (`test_tick_startet_nichts_von_selbst`).
 
 ## Migrationen
 
@@ -121,6 +121,6 @@ CI (`.github/workflows/ci.yml`) fährt pytest, ruff und den Frontend-Build. Depl
 ## Konventionen
 
 - Code-Kommentare, Docstrings, Testnamen und Commit-Messages auf Deutsch, Commits im Conventional-Commits-Stil (`feat:`, `fix:`, `chore:`, `docs:`).
-- Fachbegriffe bleiben deutsch (Übergabe, Feierabend, Tagesleiste), API-Feldnamen auch (`dauer_minuten`, `erledigt_am`).
+- Fachbegriffe bleiben deutsch (Feierabend, Tagesleiste, Rollover), API-Feldnamen auch (`dauer_minuten`, `erledigt_am`).
 - Ein Datum/Zeit-Prinzip: fachlich lokale naive Zeit, siehe Zeitzonen-Konvention oben.
 - Secrets nie ins Repo: `.env*` ist gitignored.

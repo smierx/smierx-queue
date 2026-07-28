@@ -57,8 +57,8 @@ export const api = {
       bereich?: Bereich;
     },
   ) => request<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(daten) }),
-  // Automatischer Statuswechsel: Rollover fahren, Übergabe beider Bereiche prüfen
-  // und die heutige Liste des angefragten Bereichs zurückgeben.
+  // Rollover fahren und die heutige Liste des angefragten Bereichs zurückgeben.
+  // Kein Auto-Statuswechsel: die Dauer ist eine Schätzung, gewechselt wird von Hand.
   queueTick: (bereich: Bereich) =>
     request<Task[]>(`/queue/tick${query({ bereich })}`, { method: "POST" }),
   // Feierabend im Bereich: aktive Tasks auf next, der Tick bleibt danach still.

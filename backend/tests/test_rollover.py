@@ -120,21 +120,19 @@ def test_rollover_laesst_zukunft_und_erledigte_liegen(client):
     assert [t["titel"] for t in archiv] == ["Fertig"]
 
 
-def test_tick_aktiviert_keine_zukunfts_tasks(client):
-    from tests.test_queue_tick import _abgelaufen
-
+def test_tick_fasst_zukunfts_tasks_nicht_an(client):
+    # Der Tick macht nur noch Rollover: Zukunftstage bleiben unberührt,
+    # und niemand wird von selbst aktiv (Dauer ist eine Schätzung).
     alt = _task(client, "Alt", tags=["aktiv"])
-    _task(client, "Morgen", geplant_am=date.today() + timedelta(days=1))
+    morgen = _task(client, "Morgen", geplant_am=date.today() + timedelta(days=1))
     heute = _task(client, "Heute")
-    _abgelaufen(alt["id"])
 
     client.post("/api/queue/tick")
-    morgen_tasks = client.get(
-        "/api/tasks", params={"datum": (date.today() + timedelta(days=1)).isoformat()}
-    ).json()
-    assert all("aktiv" not in t["tags"] for t in morgen_tasks)
-    heute_tags = client.get(f"/api/tasks/{heute['id']}").json()["tags"]
-    assert "aktiv" in heute_tags
+    r = client.get(f"/api/tasks/{morgen['id']}").json()
+    assert r["geplant_am"] == (date.today() + timedelta(days=1)).isoformat()
+    assert "aktiv" not in r["tags"]
+    assert "aktiv" not in client.get(f"/api/tasks/{heute['id']}").json()["tags"]
+    assert "aktiv" in client.get(f"/api/tasks/{alt['id']}").json()["tags"]
 
 
 def test_umsortieren_pro_tag(client):

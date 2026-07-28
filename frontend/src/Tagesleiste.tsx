@@ -213,15 +213,22 @@ export function Tagesleiste({
     const vonMin = Math.max(0, minAbTag(new Date(phase.von)));
     if (vonMin >= TAG_ENDE) continue;
     if (phase.bis === null) {
-      // Läuft noch: nur heute möglich. Balken über die geplante Dauer.
+      // Läuft noch: nur heute möglich. Balken über die geplante Dauer; ist die
+      // Schätzung überzogen, wächst er einfach mit der Realität weiter
+      // (Dauer ist kein Wecker, gewechselt wird von Hand).
       if (modus !== "heute") continue;
       const dauer = task ? effektiveDauer(task) : 60;
       const { segs, ende } = freieSegmente(vonMin, dauer);
+      const ueberzogen = ende <= jetztMin;
+      const echteSegs = ueberzogen ? zerschneide(vonMin, Math.max(jetztMin, vonMin + 2)) : segs;
+      const echtesEnde = ueberzogen ? jetztMin : ende;
       const basisEnde =
-        task && resizeDauer?.id === task.id ? freieSegmente(vonMin, task.dauer_minuten).ende : ende;
+        task && resizeDauer?.id === task.id
+          ? freieSegmente(vonMin, task.dauer_minuten).ende
+          : echtesEnde;
       balken.push({
-        phase, task, segs, art: "laeuft", ueberzogen: ende <= jetztMin,
-        ende, basisEnde, ebene: 0, key: `p${phase.id}`,
+        phase, task, segs: echteSegs, art: "laeuft", ueberzogen,
+        ende: echtesEnde, basisEnde, ebene: 0, key: `p${phase.id}`,
       });
     } else {
       const bisMin = Math.min(TAG_ENDE, minAbTag(new Date(phase.bis)));

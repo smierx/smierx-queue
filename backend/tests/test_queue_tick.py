@@ -49,98 +49,21 @@ def test_tick_ohne_tasks(client):
     assert r.json() == []
 
 
-def test_tick_ohne_aktive_bleibt_still(client):
-    # Kein Task aktiv (z.B. nach Feierabend) → der Tick startet nichts von selbst.
-    a = _task(client, "A")
+def test_tick_startet_nichts_von_selbst(client):
+    # Die Dauer ist eine Schätzung, kein Wecker (Entscheid 2026-07-28):
+    # auch wenn A längst über der Zeit ist, bleibt B liegen und A aktiv.
+    a = _task(client, "A", tags=["aktiv"], dauer=30)
     b = _task(client, "B", tags=["next"])
-
-    r = client.post("/api/queue/tick")
-    assert r.status_code == 200
-    assert _tags(client, a["id"]) == []
-    assert _tags(client, b["id"]) == ["next"]
-
-
-def test_tick_bevorzugt_next(client):
-    alt = _task(client, "Alt", tags=["aktiv"])
-    _task(client, "A")
-    b = _task(client, "B", tags=["next"])
-    _abgelaufen(alt["id"])
-
-    client.post("/api/queue/tick")
-    assert "aktiv" in _tags(client, b["id"])
-
-
-def test_tick_ueberspringt_geparkte(client):
-    alt = _task(client, "Alt", tags=["aktiv"])
-    a = _task(client, "A", tags=["pausiert"])
-    b = _task(client, "B", tags=["holding"])
     c = _task(client, "C")
-    _abgelaufen(alt["id"])
-
-    client.post("/api/queue/tick")
-    assert "aktiv" not in _tags(client, a["id"])
-    assert "aktiv" not in _tags(client, b["id"])
-    assert "aktiv" in _tags(client, c["id"])
-
-
-def test_tick_nimmt_next_beim_aktivieren_runter(client):
-    alt = _task(client, "Alt", tags=["aktiv"])
-    b = _task(client, "B", tags=["next"])
-    _abgelaufen(alt["id"])
-
-    client.post("/api/queue/tick")
-    assert _tags(client, b["id"]) == ["aktiv"]
-
-
-def test_tick_laesst_laufende_in_ruhe(client):
-    _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
-
-    client.post("/api/queue/tick")
-    assert _tags(client, b["id"]) == []
-
-
-def test_tick_aktiviert_naechsten_nach_ablauf(client):
-    a = _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
     _abgelaufen(a["id"])
 
     client.post("/api/queue/tick")
-    # A bleibt aktiv (wird nie automatisch beendet), B kommt dazu.
+    client.post("/api/queue/tick")
     assert "aktiv" in _tags(client, a["id"])
-    assert "aktiv" in _tags(client, b["id"])
-
-
-def _blocker(client, von: datetime, bis: datetime, titel="Meeting"):
-    r = client.post(
-        "/api/timeblocks",
-        json={"titel": titel, "typ": "meeting", "start": von.isoformat(), "ende": bis.isoformat()},
-    )
-    assert r.status_code == 201
-
-
-def test_tick_wartet_im_blocker(client):
-    alt = _task(client, "Alt", tags=["aktiv"])
-    b = _task(client, "B")
-    _abgelaufen(alt["id"])
-    jetzt = datetime.now()
-    _blocker(client, jetzt - timedelta(minutes=10), jetzt + timedelta(minutes=30))
-
-    client.post("/api/queue/tick")
-    assert _tags(client, b["id"]) == []
-
-
-def test_tick_blocker_schiebt_geplantes_ende(client):
-    # A läuft seit 50 Minuten mit Dauer 30, aber 40 Minuten davon waren geblockt.
-    # Geplantes Ende liegt also noch in der Zukunft, B darf nicht aktiviert werden.
-    a = _task(client, "A", tags=["aktiv"], dauer=30)
-    b = _task(client, "B")
-    _abgelaufen(a["id"], minuten=50)
-    jetzt = datetime.now()
-    _blocker(client, jetzt - timedelta(minutes=40), jetzt - timedelta(minutes=1))
-
-    client.post("/api/queue/tick")
-    assert _tags(client, b["id"]) == []
+    assert _tags(client, b["id"]) == ["next"]
+    assert _tags(client, c["id"]) == []
+    # Und es entstehen keine neuen Phasen.
+    assert len(client.get(f"/api/tasks/{a['id']}").json()["aktiv_phasen"]) == 1
 
 
 def test_aktiv_phasen(client):
@@ -193,69 +116,30 @@ def test_feierabend(client):
     assert _tags(client, b["id"]) == ["critical", "next"]
     assert _tags(client, c["id"]) == []
 
-    # Die aktiv-Phasen sind zu, und der Tick bleibt danach still.
+    # Die aktiv-Phasen sind zu, und es startet nichts von selbst neu.
     phasen = client.get(f"/api/tasks/{a['id']}").json()["aktiv_phasen"]
     assert phasen[-1]["bis"] is not None
     client.post("/api/queue/tick")
     assert all("aktiv" not in _tags(client, t["id"]) for t in (a, b, c))
 
 
-def test_tick_reaktiviert_degradierten_task_nicht(client):
-    # A ist über der Zeit, der Tick startet B. Nimmt Michel B das aktiv wieder
-    # weg, bleibt die Übergabe still, statt B alle 30s neu zu starten.
-    a = _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
-    _abgelaufen(a["id"])
+def test_hintergrund_tick_rollt_den_tag(client):
+    # Die Schleife im Backend hält den Rollover am Laufen, auch ohne Browser.
+    from datetime import date
 
-    client.post("/api/queue/tick")
-    assert "aktiv" in _tags(client, b["id"])
-    client.delete(f"/api/tasks/{b['id']}/tags/aktiv")
-
-    client.post("/api/queue/tick")
-    client.post("/api/queue/tick")
-    assert "aktiv" not in _tags(client, b["id"])
-    # Und es entstehen keine weiteren Phasen-Duplikate.
-    assert len(client.get(f"/api/tasks/{b['id']}").json()["aktiv_phasen"]) == 1
-
-
-def test_tick_rueckt_nach_erledigen_normal_weiter(client):
-    # Kette bleibt intakt: B wurde auto-gestartet und fertig gemacht,
-    # A liegt weiter überzogen daneben → C rückt nach.
-    a = _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
-    c = _task(client, "C")
-    _abgelaufen(a["id"])
-
-    client.post("/api/queue/tick")
-    assert "aktiv" in _tags(client, b["id"])
-    client.post(f"/api/tasks/{b['id']}/erledigt")
-
-    client.post("/api/queue/tick")
-    assert "aktiv" in _tags(client, c["id"])
-    assert "aktiv" in _tags(client, a["id"])  # A wird weiterhin nie automatisch beendet
-
-
-def test_tick_hoechstens_ein_wechsel(client):
-    a = _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
-    c = _task(client, "C")
-    _abgelaufen(a["id"])
-
-    client.post("/api/queue/tick")
-    assert "aktiv" in _tags(client, b["id"])
-    assert "aktiv" not in _tags(client, c["id"])
-
-
-def test_hintergrund_tick_wechselt_ohne_request(client):
-    # Die Schleife im Backend macht die Übergabe auch ohne offenen Browser.
     from app.tick import tick_durchlauf
 
-    a = _task(client, "A", tags=["aktiv"])
-    b = _task(client, "B")
-    _abgelaufen(a["id"])
+    alt = _task(client, "Von gestern")
+    gestern = (date.today() - timedelta(days=1)).isoformat()
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE tasks SET geplant_am = :d WHERE id = :id"),
+            {"d": gestern, "id": alt["id"]},
+        )
 
     tick_durchlauf()
-    assert "aktiv" in _tags(client, b["id"])
+    r = client.get(f"/api/tasks/{alt['id']}")
+    assert r.json()["geplant_am"] == date.today().isoformat()
 
 
 def test_hintergrund_tick_ohne_daten(client):

@@ -129,47 +129,16 @@ def test_rollover_rollt_pro_bereich(client):
     assert [t["position"] for t in privat] == [1]
 
 
-def _abgelaufen(task_id: int, minuten: int = 120) -> None:
-    vorbei = datetime.now() - timedelta(minutes=minuten)
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE task_phases SET von = :z WHERE task_id = :id"),
-            {"z": vorbei.isoformat(sep=" "), "id": task_id},
-        )
-
-
-def test_uebergabe_pro_bereich_unabhaengig(client):
-    # Arbeits-Task läuft noch in seiner Zeit, privat ist einer abgelaufen:
-    # nur der private Nachfolger wird aktiv.
-    _task(client, "Arbeit läuft", "arbeit", tags=["aktiv"])
-    alt_p = _task(client, "Privat alt", "privat", tags=["aktiv"])
-    _task(client, "Privat next", "privat")
-    _task(client, "Arbeit wartet", "arbeit")
-    _abgelaufen(alt_p["id"])
+def test_tick_startet_in_keinem_bereich_etwas(client):
+    # Seit dem Entscheid 2026-07-28 gibt es keinen Auto-Statuswechsel mehr,
+    # in keinem der beiden Bereiche.
+    _task(client, "Arbeit aktiv", "arbeit", tags=["aktiv"])
+    _task(client, "Arbeit wartet", "arbeit", tags=["next"])
+    _task(client, "Privat wartet", "privat", tags=["next"])
 
     client.post("/api/queue/tick", params={"bereich": "arbeit"})
-    assert "aktiv" not in _tags_je_titel(client, "arbeit")["Arbeit wartet"]
-    # Der Tick bedient beide Bereiche, egal welcher ihn angestoßen hat.
-    assert "aktiv" in _tags_je_titel(client, "privat")["Privat next"]
-
-
-def test_privater_blocker_pausiert_arbeit_nicht(client):
-    alt = _task(client, "Arbeit alt", "arbeit", tags=["aktiv"])
-    _task(client, "Arbeit next", "arbeit")
-    _abgelaufen(alt["id"])
-    jetzt = datetime.now()
-    client.post(
-        "/api/timeblocks",
-        json={
-            "titel": "Privater Termin", "typ": "blocker", "bereich": "privat",
-            "start": (jetzt - timedelta(minutes=10)).isoformat(),
-            "ende": (jetzt + timedelta(minutes=30)).isoformat(),
-        },
-    )
-
-    client.post("/api/queue/tick", params={"bereich": "arbeit"})
-    # Der fremde Blocker bremst nicht.
-    assert "aktiv" in _tags_je_titel(client, "arbeit")["Arbeit next"]
+    assert _tags_je_titel(client, "arbeit")["Arbeit wartet"] == ["next"]
+    assert _tags_je_titel(client, "privat")["Privat wartet"] == ["next"]
 
 
 def test_feierabend_nur_im_bereich(client):

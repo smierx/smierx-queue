@@ -1,10 +1,10 @@
 # smierx-queue nutzen
 
-Die Queue ist ein Taskmanagement-System mit einem Versprechen: **Durchsatz vorne, nicht Vollständigkeit hinten**. Du arbeitest am Kopf der Queue, die App rückt automatisch nach. Was hinten geparkt liegt, darf liegen.
+Die Queue ist ein Taskmanagement-System mit einem Versprechen: **Durchsatz vorne, nicht Vollständigkeit hinten**. Du arbeitest am Kopf der Queue und wechselst selbst, die Dauern sind nur Schätzungen. Was hinten geparkt liegt, darf liegen.
 
 ## Bereiche: Arbeit und Privat
 
-Der Schalter oben im Header wechselt zwischen zwei kompletten Welten: **Arbeit** und **Privat** haben jeweils eigene Tasks, eigene Termine/Blocker, ein eigenes Arbeitszeit-Modell und eigene Kapazität (Privat färbt den Akzent lila). Beide Seiten ticken unabhängig: die automatische Übergabe der einen Seite kümmert sich nicht um die andere, beide können gleichzeitig einen aktiven Task haben.
+Der Schalter oben im Header wechselt zwischen zwei kompletten Welten: **Arbeit** und **Privat** haben jeweils eigene Tasks, eigene Termine/Blocker, ein eigenes Arbeitszeit-Modell und eigene Kapazität (Privat färbt den Akzent lila). Beide Seiten sind unabhängig, sie können gleichzeitig einen aktiven Task haben.
 
 - Ein privater Task geht auch vormittags: umschalten, aktiv setzen, fertig. Soll die Arbeitsplanung die Unterbrechung sehen, drückst du auf der Arbeits-Seite kurz „⚡ Blocker jetzt".
 - Tasks wechseln die Seite per **⇄-Knopf** am Task, per Taste **w** (während die Maus über dem Task steht) oder über das Bereich-Feld im Detail-Modal. Sie reihen sich drüben hinten ein, Phasen und Historie wandern mit (zählen also rückwirkend im anderen Bereichs-Export).
@@ -43,7 +43,7 @@ Tags setzt du direkt per Klick auf die Chips in der Liste. Es gibt zwei Sorten:
 - **Zustand-Tags** schließen sich gegenseitig aus, einen setzen wirft den anderen runter:
   - `aktiv`: läuft gerade, liegt als Balken im Zeitstrahl
   - `next`: kommt als Nächstes dran, steht in Queue und Warteliste vorn
-  - `pausiert`, `holding`, `inaktiv`: geparkt, die automatische Übergabe überspringt sie
+  - `pausiert`, `holding`, `inaktiv`: geparkt, liegt hinten und wartet
 - **Marker** sind frei kombinierbar: `discussion`, `critical` (färbt die Karte rot)
 
 Jede Tag-Änderung landet in der Historie (sichtbar im Detail-Modal). `support` ist bewusst kein Task-Tag, sondern ein Blocker-Typ: Support-Zeit blockt deinen Tag.
@@ -53,21 +53,15 @@ Jede Tag-Änderung landet in der Historie (sichtbar im Detail-Modal). `support` 
 Ein aktiver Task liegt als grüner Balken im Zeitstrahl, von „aktiv gesetzt" bis Start plus Dauer. Mehrere aktive Tasks stapeln sich in Ebenen. Die Warteliste hängt sich nacheinander dahinter, in einer Ebene, `next` zuerst.
 
 - **Dauer ändern**: am rechten Balkenrand ziehen (5-Minuten-Raster, mindestens 15) oder im Detail-Modal.
-- **Überzogen**: läuft ein Task über sein geplantes Ende, färbt sich der Balken gelblich.
+- **Überzogen**: läuft ein Task über seine geschätzte Dauer, wächst der Balken einfach mit der Realität weiter und färbt sich gelblich. Es passiert sonst nichts, die Dauer ist kein Wecker.
 - **Phasen bleiben stehen**: jede aktiv-Phase von heute bleibt als blasser Balken sichtbar, auch nach Pausieren oder Erledigen. Wieder aktivieren gibt einen neuen Balken.
 - Der Rahmen der Achse kommt aus dem Arbeitszeit-Modell: bei festen Zeiten dein Tagesfenster, im Stunden-Modus 07 bis 16 Uhr. Blöcke außerhalb weiten die Achse, seitlich scrollen geht per Ziehen, Mausrad oder den ‹ › Pfeilen.
 
-## Automatische Übergabe
+## Kein automatischer Statuswechsel
 
-Die App wechselt Tasks von selbst, als **Übergabe**: läuft nichts mehr in seiner geplanten Zeit, wird der nächste Queue-Task aktiv. Die Regeln:
+Die App wechselt **nie** von selbst zwischen Tasks (Entscheid 2026-07-28): Die Dauer ist eine Schätzung für Planung und Zeitstrahl, kein Wecker. Läuft ein Task über seine Zeit, läuft er einfach weiter, bis du selbst wechselst — per `aktiv`-Chip am nächsten Task oder per ✓ am fertigen. `next` bleibt deine Handmarkierung für „kommt als Nächstes", die Warteliste im Zeitstrahl sortiert danach.
 
-- Nur wenn schon etwas aktiv ist. Morgens und nach Feierabend startet nichts von selbst, den ersten Task des Tages ziehst du selbst.
-- `next` kommt zuerst, dann die Queue-Reihenfolge. Geparkte Tasks (`pausiert`, `holding`, `inaktiv`) bleiben liegen.
-- Höchstens ein Wechsel pro Prüfung, aktive Tasks werden nie automatisch beendet. Überziehst du, laufen alt und neu parallel.
-- **Pro abgelaufenem Ende genau eine Übergabe:** Nimmst du dem automatisch gestarteten Task das `aktiv` wieder weg, bleibt der Tick still, bis das nächste geplante Ende wirklich abläuft. Erledigst du den gestarteten Task dagegen, rückt der nächste ganz normal nach.
-- Mitten in einem Blocker passiert nichts.
-
-Die Prüfung läuft als Hintergrund-Schleife im Backend (Default alle 60 Sekunden), der Browser muss dafür nicht offen sein. Die UI pollt zusätzlich alle 30 Sekunden.
+Der Hintergrund-Tick im Backend (Default alle 60 Sekunden) hält nur noch den **Tages-Rollover** am Laufen, auch ohne offenen Browser. Die UI pollt zusätzlich alle 30 Sekunden für Jetzt-Linie und Balken-Wachstum.
 
 ## Termine und Blocker
 
@@ -81,7 +75,7 @@ Wiederholungen (z.B. ein Daily) gibt es nicht, jeder Block ist ein Einzeleintrag
 
 ## Feierabend
 
-Der 🌙-Knopf neben „Läuft gerade" setzt alle aktiven Tasks auf `next`. Ihre aktiv-Phasen enden und bleiben als Balken stehen, die Übergabe bleibt danach still. Am nächsten Morgen ziehst du den ersten Task wieder selbst.
+Der 🌙-Knopf neben „Läuft gerade" setzt alle aktiven Tasks auf `next`. Ihre aktiv-Phasen enden und bleiben als Balken stehen. Am nächsten Morgen ziehst du den ersten Task wieder selbst.
 
 ## Arbeitszeit
 
@@ -96,4 +90,4 @@ Freie Kapazität = Arbeitszeit minus Termine/Blocker, angezeigt oben rechts.
 
 Die Export-Sektion lädt eine Kalenderwoche als JSON herunter (`smierx-queue-JJJJ-WXX.json`): alle aktiv-Phasen mit Netto-Minuten (Blocker-Zeit abgezogen, offene Phasen bis jetzt gerechnet und als `offen` markiert), erledigte Tasks, Blocker und eine Zusammenfassung (gearbeitet, geblockt, erledigt).
 
-Ehrlich einordnen: der Export misst **geplante Aktiv-Zeit, keine belegte Arbeit**. Die automatische Übergabe erzeugt auch Phasen, in denen du real etwas anderes getan hast. Die Zahlen sind Orientierung, kein Timesheet.
+Ehrlich einordnen: der Export misst **Aktiv-Zeit laut Phasen, keine belegte Arbeit**. Vergessene Wechsel erzeugen zu lange Phasen. Die Zahlen sind Orientierung, kein Timesheet.

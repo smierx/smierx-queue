@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
-    BEREICHE,
     VALID_TAGS,
     ZUSTAND_TAGS,
     TagEvent,
@@ -255,13 +254,9 @@ def historie_lesen(task_id: int, db: Session = Depends(get_db)) -> list[TagEvent
     return _task_holen(db, task_id).historie
 
 
-# Geparkte Tasks überspringt der automatische Statuswechsel.
-GEPARKT = {"pausiert", "holding", "inaktiv"}
-
-
 def _fenster_zusammenfassen(bloecke: list[TimeBlock]) -> list[tuple[datetime, datetime]]:
     """Blocker/Meetings als sortierte, überlappungsfreie Zeitfenster (naive
-    lokale Zeit, damit Vergleiche mit datetime.now() und aktiv_seit gehen)."""
+    lokale Zeit, damit Vergleiche mit datetime.now() gehen). Nutzt der Export."""
     fenster: list[tuple[datetime, datetime]] = []
     for start, ende in sorted(
         (b.start.replace(tzinfo=None), b.ende.replace(tzinfo=None)) for b in bloecke
@@ -273,100 +268,13 @@ def _fenster_zusammenfassen(bloecke: list[TimeBlock]) -> list[tuple[datetime, da
     return fenster
 
 
-def _geplantes_ende(
-    start: datetime, dauer_minuten: int, fenster: list[tuple[datetime, datetime]]
-) -> datetime:
-    """Geplantes Ende eines Tasks: Dauer ab Start, Blocker-Fenster zählen nicht
-    als Arbeitszeit und schieben das Ende nach hinten."""
-    cursor = start
-    rest = timedelta(minutes=dauer_minuten)
-    for von, bis in fenster:
-        if bis <= cursor:
-            continue
-        frei = von - cursor
-        if frei >= rest:
-            return cursor + rest
-        if frei > timedelta(0):
-            rest -= frei
-        cursor = bis
-    return cursor + rest
-
-
-def uebergabe_pruefen(db: Session, bereich: str) -> Task | None:
-    """Automatischer Statuswechsel als Übergabe: sind Tasks aktiv, aber keiner mehr
-    in seiner geplanten Zeit (aktiv seit + Dauer, Blocker schieben das Ende nach
-    hinten), wird der nächste Queue-Task aktiv. Läuft gar nichts (z.B. nach
-    Feierabend), passiert nichts. Mitten in einem Blocker passiert nichts.
-    Höchstens ein Wechsel pro Aufruf, geparkte Tasks (pausiert, holding, inaktiv)
-    bleiben liegen. Betrachtet nur die heutige Queue des Bereichs, vorgeplante
-    Tage und der andere Bereich bleiben unberührt. Committet selbst, gibt den
-    aktivierten Task zurück."""
-    tasks = list(
-        db.scalars(
-            select(Task)
-            .where(
-                Task.erledigt_am.is_(None),
-                Task.geplant_am == date.today(),
-                Task.bereich == bereich,
-            )
-            .order_by(Task.position)
-        )
-    )
-    jetzt = datetime.now()  # lokale Zeit, konsistent zu aktiv_seit und TimeBlocks
-    heute_start = datetime.combine(date.today(), time.min)
-    fenster = _fenster_zusammenfassen(
-        list(
-            db.scalars(
-                select(TimeBlock).where(
-                    TimeBlock.bereich == bereich,
-                    TimeBlock.ende > heute_start,
-                    TimeBlock.start < heute_start + timedelta(days=1),
-                )
-            )
-        )
-    )
-    im_blocker = any(von <= jetzt < bis for von, bis in fenster)
-    aktive = [t for t in tasks if "aktiv" in t.tags]
-    enden = [
-        _geplantes_ende(t.aktiv_seit, t.dauer_minuten, fenster)
-        for t in aktive
-        if t.aktiv_seit is not None
-    ]
-    laeuft_noch = any(ende > jetzt for ende in enden)
-    if not aktive or laeuft_noch or im_blocker:
-        return None
-    # Flanken- statt Dauerfeuer: pro abgelaufenem Ende höchstens eine Übergabe.
-    # Gab es seit dem jüngsten Ablauf schon einen (Re-)Start bei den offenen
-    # Tasks, bleibt der Tick still — sonst reaktiviert er einen bewusst
-    # degradierten Task alle 30 Sekunden neu (Endlosschleife, Phasen-Müll).
-    # Erledigte zählen nicht mit: nach einem Erledigen rückt der nächste normal
-    # nach (tasks enthält nur Offene).
-    if enden:
-        faellig_seit = max(enden)
-        for t in tasks:
-            if any(p["von"] > faellig_seit for p in t.aktiv_phasen):
-                return None
-    wartende = sorted(
-        (t for t in tasks if "aktiv" not in t.tags and not GEPARKT & set(t.tags)),
-        key=lambda t: (0 if "next" in t.tags else 1, t.position),
-    )
-    if not wartende:
-        return None
-    naechster = wartende[0]
-    _tag_anwenden(naechster, "aktiv")
-    db.commit()
-    logger.info("Auto-aktiviert: Task %s (%s)", naechster.id, naechster.titel)
-    return naechster
-
-
 @router.post("/queue/tick", response_model=list[TaskOut])
 def queue_tick(bereich: Bereich = "arbeit", db: Session = Depends(get_db)) -> list[Task]:
-    """Rollover fahren, Übergabe für beide Bereiche prüfen und die heutige Liste
-    des angefragten Bereichs zurückgeben. Läuft zusätzlich als Hintergrund-
-    Schleife im Backend (app/tick.py), der Endpoint hält die UI aktuell."""
+    """Rollover fahren und die heutige Liste des angefragten Bereichs
+    zurückgeben. Es gibt bewusst keinen automatischen Statuswechsel mehr:
+    die Dauer ist eine Schätzung, überzogene Tasks laufen einfach weiter,
+    gewechselt wird von Hand (Entscheid 2026-07-28)."""
     rollover_ausfuehren(db)
-    for b in sorted(BEREICHE):
-        uebergabe_pruefen(db, b)
     return list(
         db.scalars(
             select(Task)

@@ -1,4 +1,6 @@
-"""Hintergrund-Tick: automatischer Statuswechsel auch ohne offenen Browser.
+"""Hintergrund-Tick: hält den Tages-Rollover am Laufen, auch ohne offenen
+Browser (z.B. über Mitternacht). Automatische Statuswechsel gibt es seit dem
+Entscheid vom 2026-07-28 nicht mehr, die Dauer ist nur eine Schätzung.
 
 Läuft als Asyncio-Task im Lifespan (main.py). Bei mehreren Uvicorn-Workern
 liefe die Schleife mehrfach, das Deployment nutzt bewusst einen Worker.
@@ -7,26 +9,17 @@ liefe die Schleife mehrfach, das Deployment nutzt bewusst einen Worker.
 import asyncio
 import logging
 
-from sqlalchemy import select
-
 from app.config import settings
 from app.database import SessionLocal
-from app.models import BEREICHE, Task
 from app.rollover import rollover_ausfuehren
-from app.routers.tasks import uebergabe_pruefen
 
 logger = logging.getLogger("smierx_queue.tick")
 
 
 def tick_durchlauf() -> None:
-    """Ein Durchlauf: Rollover fahren, dann Übergabe je Bereich prüfen,
-    wenn offene Tasks da sind."""
+    """Ein Durchlauf: nur der Rollover."""
     with SessionLocal() as db:
         rollover_ausfuehren(db)
-        hat_offene = db.scalar(select(Task.id).where(Task.erledigt_am.is_(None)).limit(1))
-        if hat_offene is not None:
-            for bereich in sorted(BEREICHE):
-                uebergabe_pruefen(db, bereich)
 
 
 async def tick_schleife() -> None:
