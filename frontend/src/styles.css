@@ -5,6 +5,8 @@
   --muted: #4a5a66;
   --line: #dbe3e5;
   --accent: #0f6b6f;
+  /* Native Controls (Datums-/Zeit-Picker, Scrollbars) folgen dem System-Schema */
+  color-scheme: light dark;
 }
 
 * { box-sizing: border-box; }
@@ -303,3 +305,43 @@ h2 {
 .tagesleiste.zukunft .achse { background: var(--surface); }
 
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Dark Mode: folgt der macOS-Systemeinstellung, kein eigener Schalter.
+   Grundfarben über die Variablen, dazu dunkle Varianten aller Pastell-Paare
+   (Chips und Zeitstrahl-Blöcke: dunkler getönter Grund, helle Schrift). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14191b;
+    --surface: #1d2427;
+    --ink: #e2e8ea;
+    --muted: #9db2ba;
+    --line: #323e43;
+    --accent: #2f8f94;
+  }
+  .wrap[data-bereich="privat"] { --accent: #9a6cc7; }
+
+  .fehler { color: #f0968c; }
+  .karte.critical { border-color: #7a4038; box-shadow: 0 0 0 3px #46211e66; }
+  .zeile .grip { color: #55656c; }
+
+  .tag.an.aktiv      { background: #1d3d28; color: #8fd6a4; }
+  .tag.an.next       { background: #1e3350; color: #9cc0ee; }
+  .tag.an.pausiert   { background: #403615; color: #dcc276; }
+  .tag.an.holding    { background: #322a4a; color: #bfaee8; }
+  .tag.an.discussion { background: #40273e; color: #dda3d5; }
+  .tag.an.critical   { background: #46211e; color: #f0a49c; }
+  .tag.an.inaktiv    { background: #262f33; color: #a9b8be; }
+
+  .achse .block.meeting { background: #1e3350; color: #9cc0ee; border-color: #2c4a72; }
+  .achse .block.blocker { background: #3a3021; color: #d9b98a; border-color: #55452e; }
+  .achse .block.support { background: #173a40; color: #7fcdd8; border-color: #24555e; }
+  .achse .block.task { background: #1d3d28; color: #8fd6a4; border-color: #2b573a; }
+  .achse .block.task.ueberzogen { background: #3d3620; color: #d8c374; border-color: #8a6d2a; }
+  .achse .block.task.geplant { background: #232b30; color: #9fb0b8; border-color: #45535a; }
+  .achse .block .resize-griff:hover { background: #ffffff22; }
+
+  .spontan { background: #3a3021; border-color: #55452e; color: #d9b98a; }
+  .fertig { color: #8fd6a4; }
+  .fertig:hover { background: #1d3d28; }
+  .modal-hintergrund { background: #00000088; }
+}
