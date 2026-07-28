@@ -56,6 +56,7 @@ Ein aktiver Task liegt als grüner Balken im Zeitstrahl, von „aktiv gesetzt" b
 - **Überzogen**: läuft ein Task über seine geschätzte Dauer, wächst der Balken einfach mit der Realität weiter und färbt sich gelblich. Es passiert sonst nichts, die Dauer ist kein Wecker.
 - **Phasen bleiben stehen**: jede aktiv-Phase von heute bleibt als blasser Balken sichtbar, auch nach Pausieren oder Erledigen. Wieder aktivieren gibt einen neuen Balken.
 - Der Rahmen der Achse kommt aus dem Arbeitszeit-Modell: bei festen Zeiten dein Tagesfenster, im Stunden-Modus 07 bis 16 Uhr. Blöcke außerhalb weiten die Achse, seitlich scrollen geht per Ziehen, Mausrad oder den ‹ › Pfeilen.
+- **Zoomen**: Pinch auf dem Trackpad (oder Ctrl+Scrollen) zoomt um die Mausposition, die −/+ Knöpfe um die Mitte. Von einer Stunde bis zum ganzen Tag; beim Reinzoomen werden die Achsen-Ticks feiner (30/15 Minuten). „Auto" springt zurück aufs automatische Fenster.
 
 ## Kein automatischer Statuswechsel
 

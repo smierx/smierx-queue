@@ -21,6 +21,8 @@ const BLOCK_NAMEN: Record<BlockTyp, string> = {
 const EBENE_TOP = 56;
 const EBENE_HOEHE = 34;
 const TAG_ENDE = 24 * 60;
+// Engste Zoom-Stufe: eine Stunde im Blick.
+const ZOOM_MIN = 60;
 
 export type LeistenModus = "heute" | "vergangen" | "zukunft";
 
@@ -113,6 +115,10 @@ export function Tagesleiste({
   const [sende, setSende] = useState(false);
   // Verschiebung der Achse in Minuten relativ zum Auto-Fenster.
   const [offset, setOffset] = useState(0);
+  // Sichtspanne in Minuten, null = Auto-Fenster.
+  const [zoomSpanne, setZoomSpanne] = useState<number | null>(null);
+  // Aktuelle Sicht-Werte für den Wheel-Listener (der hängt nicht am Render).
+  const sicht = useRef({ spanne: 0, viewStart: 0, autoStart: 0, offsetMin: 0, offsetMax: 0 });
 
   useEffect(() => {
     if (!form) return;
@@ -309,7 +315,8 @@ export function Tagesleiste({
   }
   autoStart = Math.floor(autoStart / 60) * 60;
   autoEnde = Math.ceil(autoEnde / 60) * 60;
-  const spanne = autoEnde - autoStart;
+  // Zoom: null = Auto-Fenster, sonst gewählte Sichtspanne in Minuten.
+  const spanne = Math.min(TAG_ENDE, Math.max(ZOOM_MIN, zoomSpanne ?? autoEnde - autoStart));
 
   // Sichtfenster: Auto-Fenster plus Verschiebung, geklemmt auf 00:00 bis 24:00.
   const offsetMin = -autoStart;
@@ -318,8 +325,18 @@ export function Tagesleiste({
   const viewStart = autoStart + klemmen(offset);
   const viewEnde = viewStart + spanne;
 
+  // Fürs Zoomen um die Maus-Position im nicht-passiven Wheel-Listener.
+  sicht.current = { spanne, viewStart, autoStart, offsetMin, offsetMax };
+
+  // Beim Reinzoomen werden die Ticks feiner.
+  const tickSchritt = spanne <= 150 ? 15 : spanne <= 420 ? 30 : 60;
   const ticks: number[] = [];
-  for (let h = Math.ceil(viewStart / 60); h * 60 <= viewEnde; h++) ticks.push(h);
+  for (
+    let m = Math.ceil(viewStart / tickSchritt) * tickSchritt;
+    m <= viewEnde;
+    m += tickSchritt
+  )
+    ticks.push(m);
 
   function position(vonMin: number, bisMin: number) {
     const start = Math.max(vonMin, viewStart);
@@ -350,6 +367,46 @@ export function Tagesleiste({
   function pointerUp() {
     // bewegt-Flag kurz stehen lassen, damit der Click-Capture es noch sieht.
     setTimeout(() => (drag.current = null), 0);
+  }
+
+  // Zoomen: Pinch aufs Trackpad kommt als Wheel-Event mit ctrlKey an. Der
+  // Listener muss nicht-passiv sein, damit preventDefault den Browser-Zoom
+  // stoppt — deshalb von Hand statt über Reacts onWheel.
+  useEffect(() => {
+    const achse = achseRef.current;
+    if (!achse) return;
+    function onWheel(e: WheelEvent) {
+      const s = sicht.current;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const rect = achse!.getBoundingClientRect();
+        const anteil = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+        const neueSpanne = Math.min(
+          TAG_ENDE,
+          Math.max(ZOOM_MIN, s.spanne * Math.exp(e.deltaY * 0.01)),
+        );
+        // Die Minute unter der Maus bleibt stehen.
+        const fixeMinute = s.viewStart + anteil * s.spanne;
+        setZoomSpanne(neueSpanne);
+        setOffset(fixeMinute - anteil * neueSpanne - s.autoStart);
+      } else {
+        e.preventDefault();
+        const wert = s.spanne / (achse!.clientWidth || 1);
+        setOffset((alt) =>
+          Math.min(Math.max(alt + (e.deltaX || e.deltaY) * wert, s.offsetMin), s.offsetMax),
+        );
+      }
+    }
+    achse.addEventListener("wheel", onWheel, { passive: false });
+    return () => achse.removeEventListener("wheel", onWheel);
+  }, []);
+
+  function zoomen(faktor: number) {
+    const s = sicht.current;
+    const mitte = s.viewStart + s.spanne / 2;
+    const neueSpanne = Math.min(TAG_ENDE, Math.max(ZOOM_MIN, s.spanne * faktor));
+    setZoomSpanne(neueSpanne);
+    setOffset(mitte - neueSpanne / 2 - s.autoStart);
   }
   function clickCapture(e: React.MouseEvent) {
     if (drag.current?.bewegt) {
@@ -487,15 +544,14 @@ export function Tagesleiste({
         onPointerUp={pointerUp}
         onPointerCancel={pointerUp}
         onClickCapture={clickCapture}
-        onWheel={(e) => setOffset(klemmen(offset + (e.deltaX || e.deltaY) * 0.5))}
       >
-        {ticks.map((h) => (
+        {ticks.map((m) => (
           <div
-            key={h}
-            className="tick"
-            style={{ left: `${((h * 60 - viewStart) / spanne) * 100}%` }}
+            key={m}
+            className={`tick ${m % 60 !== 0 ? "fein" : ""}`}
+            style={{ left: `${((m - viewStart) / spanne) * 100}%` }}
           >
-            <small>{String(h).padStart(2, "0")}</small>
+            <small>{m % 60 === 0 ? String(m / 60).padStart(2, "0") : alsUhr(m)}</small>
           </div>
         ))}
         {kapazitaet.bloecke.map((block) => {
@@ -597,8 +653,25 @@ export function Tagesleiste({
                   onClick={() => setOffset(klemmen(offset + 60))}>
             ›
           </button>
-          {klemmen(offset) !== 0 && (
-            <button type="button" className="sekundaer" onClick={() => setOffset(0)}>
+          <button type="button" className="sekundaer" aria-label="Zeitstrahl rauszoomen"
+                  title="Rauszoomen (auch Pinch oder Ctrl+Scrollen)"
+                  onClick={() => zoomen(1.4)}>
+            −
+          </button>
+          <button type="button" className="sekundaer" aria-label="Zeitstrahl reinzoomen"
+                  title="Reinzoomen (auch Pinch oder Ctrl+Scrollen)"
+                  onClick={() => zoomen(1 / 1.4)}>
+            +
+          </button>
+          {(klemmen(offset) !== 0 || zoomSpanne !== null) && (
+            <button
+              type="button"
+              className="sekundaer"
+              onClick={() => {
+                setOffset(0);
+                setZoomSpanne(null);
+              }}
+            >
               Auto
             </button>
           )}

@@ -125,6 +125,9 @@ h2 {
   color: var(--muted); font-size: 0.64rem;
   white-space: nowrap;
 }
+/* Zwischen-Ticks beim Reinzoomen (15/30 Minuten): zurückhaltender */
+.achse .tick.fein { border-left-style: dotted; }
+.achse .tick.fein small { opacity: 0.7; }
 .achse .block {
   position: absolute; top: 20px; height: 30px;
   border-radius: 5px; padding: 2px 6px;
