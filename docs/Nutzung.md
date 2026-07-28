@@ -64,6 +64,7 @@ Die App wechselt Tasks von selbst, als **Übergabe**: läuft nichts mehr in sein
 - Nur wenn schon etwas aktiv ist. Morgens und nach Feierabend startet nichts von selbst, den ersten Task des Tages ziehst du selbst.
 - `next` kommt zuerst, dann die Queue-Reihenfolge. Geparkte Tasks (`pausiert`, `holding`, `inaktiv`) bleiben liegen.
 - Höchstens ein Wechsel pro Prüfung, aktive Tasks werden nie automatisch beendet. Überziehst du, laufen alt und neu parallel.
+- **Pro abgelaufenem Ende genau eine Übergabe:** Nimmst du dem automatisch gestarteten Task das `aktiv` wieder weg, bleibt der Tick still, bis das nächste geplante Ende wirklich abläuft. Erledigst du den gestarteten Task dagegen, rückt der nächste ganz normal nach.
 - Mitten in einem Blocker passiert nichts.
 
 Die Prüfung läuft als Hintergrund-Schleife im Backend (Default alle 60 Sekunden), der Browser muss dafür nicht offen sein. Die UI pollt zusätzlich alle 30 Sekunden.

@@ -200,6 +200,41 @@ def test_feierabend(client):
     assert all("aktiv" not in _tags(client, t["id"]) for t in (a, b, c))
 
 
+def test_tick_reaktiviert_degradierten_task_nicht(client):
+    # A ist über der Zeit, der Tick startet B. Nimmt Michel B das aktiv wieder
+    # weg, bleibt die Übergabe still, statt B alle 30s neu zu starten.
+    a = _task(client, "A", tags=["aktiv"])
+    b = _task(client, "B")
+    _abgelaufen(a["id"])
+
+    client.post("/api/queue/tick")
+    assert "aktiv" in _tags(client, b["id"])
+    client.delete(f"/api/tasks/{b['id']}/tags/aktiv")
+
+    client.post("/api/queue/tick")
+    client.post("/api/queue/tick")
+    assert "aktiv" not in _tags(client, b["id"])
+    # Und es entstehen keine weiteren Phasen-Duplikate.
+    assert len(client.get(f"/api/tasks/{b['id']}").json()["aktiv_phasen"]) == 1
+
+
+def test_tick_rueckt_nach_erledigen_normal_weiter(client):
+    # Kette bleibt intakt: B wurde auto-gestartet und fertig gemacht,
+    # A liegt weiter überzogen daneben → C rückt nach.
+    a = _task(client, "A", tags=["aktiv"])
+    b = _task(client, "B")
+    c = _task(client, "C")
+    _abgelaufen(a["id"])
+
+    client.post("/api/queue/tick")
+    assert "aktiv" in _tags(client, b["id"])
+    client.post(f"/api/tasks/{b['id']}/erledigt")
+
+    client.post("/api/queue/tick")
+    assert "aktiv" in _tags(client, c["id"])
+    assert "aktiv" in _tags(client, a["id"])  # A wird weiterhin nie automatisch beendet
+
+
 def test_tick_hoechstens_ein_wechsel(client):
     a = _task(client, "A", tags=["aktiv"])
     b = _task(client, "B")

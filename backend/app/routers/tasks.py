@@ -327,13 +327,25 @@ def uebergabe_pruefen(db: Session, bereich: str) -> Task | None:
     )
     im_blocker = any(von <= jetzt < bis for von, bis in fenster)
     aktive = [t for t in tasks if "aktiv" in t.tags]
-    laeuft_noch = any(
-        t.aktiv_seit is not None
-        and _geplantes_ende(t.aktiv_seit, t.dauer_minuten, fenster) > jetzt
+    enden = [
+        _geplantes_ende(t.aktiv_seit, t.dauer_minuten, fenster)
         for t in aktive
-    )
+        if t.aktiv_seit is not None
+    ]
+    laeuft_noch = any(ende > jetzt for ende in enden)
     if not aktive or laeuft_noch or im_blocker:
         return None
+    # Flanken- statt Dauerfeuer: pro abgelaufenem Ende höchstens eine Übergabe.
+    # Gab es seit dem jüngsten Ablauf schon einen (Re-)Start bei den offenen
+    # Tasks, bleibt der Tick still — sonst reaktiviert er einen bewusst
+    # degradierten Task alle 30 Sekunden neu (Endlosschleife, Phasen-Müll).
+    # Erledigte zählen nicht mit: nach einem Erledigen rückt der nächste normal
+    # nach (tasks enthält nur Offene).
+    if enden:
+        faellig_seit = max(enden)
+        for t in tasks:
+            if any(p["von"] > faellig_seit for p in t.aktiv_phasen):
+                return None
     wartende = sorted(
         (t for t in tasks if "aktiv" not in t.tags and not GEPARKT & set(t.tags)),
         key=lambda t: (0 if "next" in t.tags else 1, t.position),
