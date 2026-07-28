@@ -214,11 +214,19 @@ def task_erledigen(
 ) -> Task:
     """Task ins Archiv statt löschen. Läuft er gerade, endet die Phase
     und das aktiv-Tag geht runter (Wiederöffnen startet ihn nicht von selbst).
-    Ein Zeitpunkt im Body datiert das Erledigen fürs Nachtragen zurück."""
+    Ein Zeitpunkt im Body datiert das Erledigen fürs Nachtragen zurück; hat der
+    Task dann noch keine Phasen, entsteht eine über die geplante Dauer, damit
+    er im Zeitstrahl und im Export sichtbar ist."""
     task = _task_holen(db, task_id)
     if task.erledigt_am is None:
         zeitpunkt = daten.zeitpunkt if daten and daten.zeitpunkt else datetime.now()
+        if zeitpunkt.tzinfo is not None:  # API-Input normalisieren, Konvention ist lokal naiv
+            zeitpunkt = zeitpunkt.astimezone().replace(tzinfo=None)
         task.erledigt_am = _utc_naiv(zeitpunkt)
+        if daten and daten.zeitpunkt and not task.phasen:
+            task.phasen.append(
+                TaskPhase(von=zeitpunkt - timedelta(minutes=task.dauer_minuten), bis=zeitpunkt)
+            )
         _offene_phase_schliessen(task, zeitpunkt)
         zeile = next((z for z in task.tag_zeilen if z.tag == "aktiv"), None)
         if zeile is not None:

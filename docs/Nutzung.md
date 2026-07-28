@@ -28,7 +28,7 @@ Von oben nach unten:
 Jeder Tag hat seine eigene Queue samt Zeitstrahl. Mit ‹ › neben der Überschrift (oder dem Datums-Feld) blätterst du, „Heute" springt zurück.
 
 - **Zukunftstage** planst du vor: Tasks anlegen, sortieren, Dauer ziehen, Blocker eintragen. Die Warteliste liegt ab dem Arbeitsfenster-Beginn im Zeitstrahl. Keine Jetzt-Linie, kein automatischer Statuswechsel.
-- **Vergangene Tage** trägst du nach: Klick auf einen Phasen-Balken korrigiert Von/Bis oder löscht die Phase, „+ Phase" trägt eine neue nach (Task-Auswahl aus heutiger Queue und Archiv), Blocker gehen wie gewohnt. Der Wochen-Export rechnet immer mit dem korrigierten Stand.
+- **Vergangene Tage** trägst du nach: Klick auf einen Phasen-Balken korrigiert Von/Bis oder löscht die Phase, „+ Phase" trägt eine neue nach (Task-Auswahl aus heutiger Queue und Archiv), Blocker gehen wie gewohnt. Der Wochen-Export rechnet immer mit dem korrigierten Stand. Erledigst du einen Task rückwirkend, der noch keine Phasen hat, bekommt er automatisch einen Balken über seine geplante Dauer bis zum Erledigt-Zeitpunkt; die Zeiten korrigierst du bei Bedarf am Balken.
 - **Rollover:** was am Tagesende nicht erledigt ist, rutscht automatisch an den Kopf der heutigen Queue, sobald die App den neuen Tag sieht (auch geparkte Tasks wandern mit). Hast du den Feierabend-Knopf vergessen, endet die laufende Phase rückwirkend um Mitternacht und der Task steht auf `next`. Die Zeit korrigierst du bei Bedarf nachträglich.
 - Einen Task verschiebst du über „Geplant am" im Detail-Modal auf einen anderen Tag (er reiht sich dort hinten ein).
 

@@ -43,6 +43,55 @@ def test_reorder_ignoriert_erledigte(client):
     assert r.status_code == 422
 
 
+def test_retro_erledigen_erzeugt_phase_ueber_die_dauer(client):
+    # Nachgetragen erledigt ohne bekannte Phasen: der Task bekommt einen
+    # Balken über die geplante Dauer, endend am Erledigt-Zeitpunkt.
+    from datetime import datetime, timedelta
+
+    task = client.post(
+        "/api/tasks", json={"titel": "Nachgetragen", "dauer_minuten": 90}
+    ).json()
+    gestern = (datetime.now() - timedelta(days=1)).replace(
+        hour=16, minute=0, second=0, microsecond=0
+    )
+    r = client.post(
+        f"/api/tasks/{task['id']}/erledigt", json={"zeitpunkt": gestern.isoformat()}
+    )
+    phasen = r.json()["aktiv_phasen"]
+    assert len(phasen) == 1
+    assert phasen[0]["von"] == (gestern - timedelta(minutes=90)).isoformat()
+    assert phasen[0]["bis"] == gestern.isoformat()
+
+    # Und der Zeitstrahl des Tages sieht ihn.
+    tag = gestern.date().isoformat()
+    balken = client.get("/api/phasen", params={"datum": tag}).json()
+    assert [p["titel"] for p in balken] == ["Nachgetragen"]
+
+
+def test_retro_erledigen_mit_phase_erzeugt_keine_zweite(client):
+    from datetime import datetime, timedelta
+
+    task = client.post("/api/tasks", json={"titel": "Hat schon"}).json()
+    gestern = (datetime.now() - timedelta(days=1)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    client.post(
+        f"/api/tasks/{task['id']}/phasen",
+        json={"von": gestern.isoformat(), "bis": (gestern + timedelta(hours=1)).isoformat()},
+    )
+    r = client.post(
+        f"/api/tasks/{task['id']}/erledigt",
+        json={"zeitpunkt": (gestern + timedelta(hours=7)).isoformat()},
+    )
+    assert len(r.json()["aktiv_phasen"]) == 1
+
+
+def test_normales_erledigen_erzeugt_keine_phase(client):
+    task = _task(client)
+    r = client.post(f"/api/tasks/{task['id']}/erledigt")
+    assert r.json()["aktiv_phasen"] == []
+
+
 def test_wieder_oeffnen_reiht_hinten_ein(client):
     a = _task(client, "A")
     b = _task(client, "B")
