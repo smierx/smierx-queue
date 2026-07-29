@@ -86,6 +86,7 @@ class TaskOut(BaseModel):
     erledigt_am: datetime | None
     aktiv_seit: datetime | None
     aktiv_phasen: list[AktivPhase]
+    gesamt_minuten: int
 
 
 class TagEventOut(BaseModel):

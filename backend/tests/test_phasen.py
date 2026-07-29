@@ -71,6 +71,37 @@ def test_wieder_aktivieren_gibt_neue_phase(client):
     assert phasen[1]["bis"] is None
 
 
+def test_gesamt_minuten_summiert_phasen(client):
+    task = _task(client, "Projekt")
+    gestern = (datetime.now() - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+    for von_h, bis_h in ((9, 10), (14, 15)):
+        client.post(
+            f"/api/tasks/{task['id']}/phasen",
+            json={
+                "von": gestern.replace(hour=von_h).isoformat(),
+                "bis": gestern.replace(hour=bis_h).isoformat(),
+            },
+        )
+
+    assert client.get(f"/api/tasks/{task['id']}").json()["gesamt_minuten"] == 120
+
+
+def test_gesamt_minuten_zaehlt_offene_phase_mit(client):
+    task = _task(client, "Läuft", tags=["aktiv"])
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    vor_30 = datetime.now() - timedelta(minutes=30)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE task_phases SET von = :z WHERE task_id = :id"),
+            {"z": vor_30.isoformat(sep=" "), "id": task["id"]},
+        )
+
+    assert 29 <= client.get(f"/api/tasks/{task['id']}").json()["gesamt_minuten"] <= 31
+
+
 # --- Nachtragen (CRUD) ---
 
 

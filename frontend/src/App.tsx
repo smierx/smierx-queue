@@ -222,6 +222,32 @@ export default function App() {
     if (archivOffen) ladenArchiv();
   }
 
+  // Projekt-Modus: ▶ startet (aktiv + Phase auf), ⏹ stoppt nur (Phase zu,
+  // der Eintrag bleibt in der Queue). Archiviert wird ausschließlich über ✓
+  // auf nicht-aktiven Einträgen.
+  async function starten(task: Task) {
+    await api.tagSetzen(task.id, "aktiv");
+    laden();
+  }
+
+  async function stoppen(task: Task) {
+    await api.tagEntfernen(task.id, "aktiv");
+    laden();
+  }
+
+  // Heutige Minuten eines Tasks aus den Phasen des Tages (offene bis jetzt).
+  function heuteMinuten(taskId: number): number {
+    const jetzt = Date.now();
+    let summe = 0;
+    for (const p of phasen) {
+      if (p.task_id !== taskId) continue;
+      const von = new Date(p.von).getTime();
+      const bis = p.bis ? new Date(p.bis).getTime() : jetzt;
+      summe += Math.max(0, bis - von);
+    }
+    return Math.round(summe / 60_000);
+  }
+
   async function exportieren() {
     if (!exportWoche) return;
     const daten = await api.exportWoche(exportWoche, bereich);
@@ -357,13 +383,22 @@ export default function App() {
                 {wechselKnopf(task)}
                 <button
                   type="button"
-                  className="fertig"
-                  title="Erledigt"
-                  onClick={() => erledigen(task)}
+                  className="stopp"
+                  title="Stoppen: Zeit hält an, der Eintrag bleibt in der Queue"
+                  onClick={() => stoppen(task)}
                 >
-                  ✓
+                  ⏹
                 </button>
               </div>
+              <p className="zeit-info">
+                {task.aktiv_seit &&
+                  `läuft seit ${new Date(task.aktiv_seit).toLocaleTimeString("de-DE", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} · `}
+                heute {minutenAlsText(heuteMinuten(task.id))} · gesamt{" "}
+                {minutenAlsText(task.gesamt_minuten)}
+              </p>
               <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
             </article>
           ))}
@@ -374,7 +409,7 @@ export default function App() {
         <h2>
           Queue für {datumLabel(datum)}{" "}
           <span className="hint">
-            next zuerst · ziehen zum Umsortieren · ⇄ oder w schiebt in die andere Welt
+            ▶ startet · ✓ archiviert · ziehen zum Umsortieren · ⇄ oder w wechselt die Welt
           </span>
         </h2>
         {queue.length === 0 && !istHeute && (
@@ -400,11 +435,21 @@ export default function App() {
               {task.titel}
             </button>
             <TagChips task={task} onToggle={(tag) => tagToggle(task, tag)} />
+            {istHeute && (
+              <button
+                type="button"
+                className="start"
+                title="Starten: aktiv setzen, Zeit läuft"
+                onClick={() => starten(task)}
+              >
+                ▶
+              </button>
+            )}
             {wechselKnopf(task)}
             <button
               type="button"
               className="fertig"
-              title="Erledigt"
+              title="Erledigt: ins Archiv (fürs echte Projektende)"
               onClick={() => erledigen(task)}
             >
               ✓

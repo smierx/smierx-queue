@@ -233,6 +233,29 @@ h2 {
 }
 .fertig:hover { background: #ddf0e2; }
 
+/* Projekt-Modus: ▶ startet, ⏹ stoppt nur (Phase zu, Eintrag bleibt) */
+.start {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: #1e6e3c;
+  border-radius: 6px;
+  padding: 2px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.start:hover { background: #ddf0e2; }
+.stopp {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: #a02c22;
+  border-radius: 6px;
+  padding: 2px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.stopp:hover { background: #f6dcda; }
+.zeit-info { margin: 0 0 8px; font-size: 0.8rem; color: var(--muted); }
+
 .zeile.erledigt { opacity: 0.75; }
 .zeile.erledigt .titel { flex: 1; text-decoration: line-through; }
 .zeile.erledigt small { color: var(--muted); }
@@ -346,5 +369,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .spontan { background: #3a3021; border-color: #55452e; color: #d9b98a; }
   .fertig { color: #8fd6a4; }
   .fertig:hover { background: #1d3d28; }
+  .start { color: #8fd6a4; }
+  .start:hover { background: #1d3d28; }
+  .stopp { color: #f0a49c; }
+  .stopp:hover { background: #46211e; }
   .modal-hintergrund { background: #00000088; }
 }

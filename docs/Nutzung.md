@@ -32,6 +32,14 @@ Jeder Tag hat seine eigene Queue samt Zeitstrahl. Mit ‹ › neben der Übersch
 - **Rollover:** was am Tagesende nicht erledigt ist, rutscht automatisch an den Kopf der heutigen Queue, sobald die App den neuen Tag sieht (auch geparkte Tasks wandern mit). Hast du den Feierabend-Knopf vergessen, endet die laufende Phase rückwirkend um Mitternacht und der Task steht auf `next`. Die Zeit korrigierst du bei Bedarf nachträglich.
 - Einen Task verschiebst du über „Geplant am" im Detail-Modal auf einen anderen Tag (er reiht sich dort hinten ein).
 
+## Projekte statt Kleinkram
+
+Ein Eintrag muss kein Mini-Task sein: Leg **langlebige Projekte** an („OKR Pipelines", „Keycloak") und track die Zeit darauf. Der Rollover nimmt sie automatisch jeden Tag mit, die Phasen sind deine Zeiterfassung, der Wochen-Export die Summe.
+
+- **▶ am Queue-Eintrag** startet: aktiv, die Zeit läuft, Balken im Zeitstrahl.
+- **⏹ an der laufenden Karte** stoppt nur: die Phase endet, das Projekt bleibt in der Queue. Auf der Karte siehst du „läuft seit · heute · gesamt".
+- **✓** archiviert und ist nur fürs **echte Projektende** (deshalb gibt es ✓ auf laufenden Einträgen nicht, erst stoppen).
+
 ## Tasks
 
 Neuen Task unten in der Queue eintippen, „In die Queue" legt ihn auf den angezeigten Tag. Klick auf einen Titel öffnet das Detail-Modal: Titel, Beschreibung, Dauer in Minuten (Default 60), Geplant-am, die Phasen (mit Bearbeiten/Löschen), rückwirkendes Erledigen und die Tag-Historie. Der ✓-Knopf erledigt einen Task, er wandert ins Archiv statt gelöscht zu werden. Aus dem Archiv holst du ihn per „Wieder öffnen" zurück (er reiht sich heute hinten ein) oder löschst ihn endgültig.

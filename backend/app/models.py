@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import (
     JSON,
@@ -120,6 +120,20 @@ class Task(Base):
             return None
         offene = [p for p in self.phasen if p.bis is None]
         return _phasenzeit(offene[-1].von) if offene else None
+
+    @property
+    def gesamt_minuten(self) -> int:
+        """Summe aller Phasen über alle Tage, offene zählen bis jetzt.
+        Die Zeiterfassung für den Projekt-Modus."""
+        jetzt = datetime.now()
+        summe = sum(
+            (
+                ((_phasenzeit(p.bis) if p.bis is not None else jetzt) - _phasenzeit(p.von))
+                for p in self.phasen
+            ),
+            timedelta(0),
+        )
+        return max(0, round(summe.total_seconds() / 60))
 
 
 class TaskTag(Base):

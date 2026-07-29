@@ -103,6 +103,12 @@ export function TaskDetail({ task, onClose, onChange }: {
               rows={5}
             />
           </label>
+          <p className="zeit-info">
+            Gesamt bisher:{" "}
+            {task.gesamt_minuten >= 60
+              ? `${Math.floor(task.gesamt_minuten / 60)} h ${task.gesamt_minuten % 60} min`
+              : `${task.gesamt_minuten} min`}
+          </p>
           <div className="zeit-zeile">
             <label>
               Dauer (Minuten)
